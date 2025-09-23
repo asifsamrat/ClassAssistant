@@ -12,6 +12,7 @@ import base64
 from datetime import datetime as dt
 import datetime as ds
 from src.models import Settings, StudentModel, AttendanceModel, TeacherModel
+from datetime import date as dt, datetime as dtime
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from src.settings import (
@@ -65,7 +66,9 @@ def recognize_faces_and_mark_attendance(encodings):
                 today = ds.date.today()
                 attendance = AttendanceModel.find_by_student_and_date(student.id, today)
 
-                now = ds.datetime.utcnow()
+                # now = ds.datetime.utcnow()
+                now=ds.datetime.now()
+
 
                 if attendance:
                     # Already exists → update last_seen_time
@@ -77,7 +80,9 @@ def recognize_faces_and_mark_attendance(encodings):
 
                     # Mark present if >= 30 mins
                     if attendance.total_minutes >= 30:
-                        attendance.is_present = True
+                        attendance.is_present = 1
+                    else:
+                        attendance.is_present = 0.5
 
                     attendance.save_to_db()
                     print(f"[INFO] Updated {student.name}: last_seen={attendance.last_seen_time}, total={attendance.total_minutes} mins")
@@ -244,6 +249,61 @@ def dashboard():
     student_json = jsonify(all_info)
     # print(student_json)
     return student_json, 200
+@app.route('/get_attendance', methods=['GET'])
+@token_required
+def time_logs():
+    students = StudentModel.find_all()
+    attendances = AttendanceModel.find_all()
+    setting = Settings.find_all()[0]
+    print("total",attendances)
+    all_info = []
+
+    # Threshold time: start_time + late_count minutes
+    threshold_time = (ds.datetime.combine(ds.date.today(), setting.start_time) +
+                      ds.timedelta(minutes=setting.late_count)).time()
+
+    today = ds.date.today()
+
+    for student in students:
+        date_time = {
+            "dates": []
+        }
+        status = "--"  # Default
+
+        for attendance in attendances:
+            print(attendance.student_id)
+            if student.id == attendance.student_id and attendance.date.date() == today:
+                attend_time = attendance.date.time()
+                if attendance.is_present == 0.5:
+                    status = "late"
+                if attendance.is_present == 1:
+                    status = "on time"
+                
+                date_time["dates"].append({
+                    "attendance_date": attendance.date.strftime("%Y-%m-%d"),
+                    "ck_time": attendance.date.strftime("%H:%M:%p"),
+                    "ck_out":attendance.last_seen_time.strftime("%H:%M:%p"),
+                    "total_time": attendance.total_minutes
+                })
+                break  # No need to check more attendance records for today
+
+        # If the student has no attendance for today
+        if not date_time["dates"]:
+            date_time["dates"].append({
+                "attendance_date": "--",
+                "time": "--"
+            })
+
+        student_data = {
+            "id": student.id,
+            "name": student.name,
+            "date_time": date_time,
+            "status": status
+        }
+
+        all_info.append(student_data)
+
+    return jsonify(all_info), 200
 # profile
 @app.route('/profiles',methods=['GET'])
 @token_required
@@ -282,16 +342,19 @@ def time_logs():
         status = "--"  # Default
 
         for attendance in attendances:
+            print(attendance.student_id)
             if student.id == attendance.student_id and attendance.date.date() == today:
                 attend_time = attendance.date.time()
-                if attend_time > threshold_time:
+                if attendance.is_present == 0.5:
                     status = "late"
-                else:
+                if attendance.is_present == 1:
                     status = "on time"
                 
                 date_time["dates"].append({
                     "attendance_date": attendance.date.strftime("%Y-%m-%d"),
-                    "time": attendance.date.strftime("%H:%M:%p")
+                    "ck_time": attendance.date.strftime("%H:%M:%p"),
+                    "ck_out":attendance.last_seen_time.strftime("%H:%M:%p"),
+                    "total_time": attendance.total_minutes
                 })
                 break  # No need to check more attendance records for today
 

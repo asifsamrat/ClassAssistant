@@ -941,10 +941,10 @@ function TimeLogsContent({ activeTab }: { activeTab: string }) {
           .map((item) => ({
             date: item.date_time.dates[0].attendance_date,
             name: item.name,
-            checkin: item.date_time.dates[0].time,
+            checkin: item.date_time.dates[0].ck_time,
             status: item.status,
-            checkout: "--",
-            totalhours: "--",
+            checkout: item.date_time.dates[0].ck_out,
+            totalhours: item.date_time.dates[0].total_time,
           }));
         setTimeslogs(filtered);
         console.log(filtered);
@@ -963,7 +963,7 @@ function TimeLogsContent({ activeTab }: { activeTab: string }) {
     doc.setFontSize(11);
 
     const headers = [
-      ["DATE", "STUDENT", "CHECK IN", "CHECK OUT", "TOTAL HOURS", "STATUS"],
+      ["DATE", "STUDENT", "CHECK IN", "CHECK OUT", "TOTAL MINUETS", "STATUS"],
     ];
 
     const rows = timeslogs.map((std) => [
@@ -1060,7 +1060,7 @@ function TimeLogsContent({ activeTab }: { activeTab: string }) {
                   Check Out
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Hours
+                  Total MINUTES
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status

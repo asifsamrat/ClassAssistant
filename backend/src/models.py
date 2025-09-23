@@ -2,7 +2,7 @@ from typing import List
 from uuid import uuid4
 from datetime import date as dt, datetime as dtime, time
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, TIMESTAMP, ForeignKey, Time
+from sqlalchemy import Column,Float,Integer, String, Boolean, DateTime, TIMESTAMP, ForeignKey, Time
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
@@ -97,7 +97,8 @@ class AttendanceModel(Base):
     entry_time = Column(DateTime(timezone=True), default=dtime.now)   # first time detected today
     last_seen_time = Column(DateTime(timezone=True), default=dtime.now)  # updated each detection
     total_minutes = Column(Integer, default=0)  # total minutes stayed
-    is_present = Column(Boolean, default=False)  # marked true when >= threshold
+    # is_present = Column(Boolean, default=False)  # marked true when >= threshold
+    is_present = Column(Float, default=0.0)
 
     # ---------------------- CLASS METHODS ----------------------
     @classmethod
