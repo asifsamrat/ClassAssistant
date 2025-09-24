@@ -557,7 +557,7 @@ function AttendanceContent({
       const fetchData = async () => {
         try {
           const response = await axios.get(
-            `${import.meta.env.VITE_API}/dashboard`,
+            `${import.meta.env.VITE_API}/get_attendance`,
             {
               withCredentials: true,
             }

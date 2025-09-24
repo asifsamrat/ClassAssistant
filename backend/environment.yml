@@ -21,7 +21,7 @@ dependencies:
   - flask-cors
   - flask-restful
   - flask-jwt-extended
-  - Flask PyJWT
+  - pyjwt
   - python-dotenv
   - werkzeug
   - sqlalchemy

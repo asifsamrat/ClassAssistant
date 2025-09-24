@@ -21,7 +21,7 @@ export const AuthCard: React.FC<AuthCardProps> = ({ initialView  }) => {
       </div>
       
       <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">
-        {view === 'login' ? 'Attendance-AI' : 'Attendance-AI'}
+        {view === 'login' ? 'Class Assistant' : 'Class Assistant'}
       </h2>
       <h2 className="text-md font-bold text-center text-gray-800 mb-2">
         {view === 'login' ? 'Teachers Login' : 'Create an account'}
