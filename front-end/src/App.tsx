@@ -172,7 +172,7 @@ function App() {
       <aside className="w-64 bg-white border-r border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-8">
           <UserCheck className="h-8 w-8 text-indigo-600" />
-          <h1 className="text-xl font-bold text-gray-900">AttendanceAI</h1>
+          <h1 className="text-xl font-bold text-gray-900">ClassAssistantAI</h1>
         </div>
 
         <nav className="space-y-1">
