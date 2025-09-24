@@ -251,7 +251,7 @@ def dashboard():
     return student_json, 200
 @app.route('/get_attendance', methods=['GET'])
 @token_required
-def time_logs():
+def get_attendance():
     students = StudentModel.find_all()
     attendances = AttendanceModel.find_all()
     setting = Settings.find_all()[0]
