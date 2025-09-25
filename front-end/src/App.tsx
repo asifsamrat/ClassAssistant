@@ -563,10 +563,10 @@ function AttendanceContent({
             }
           );
           const data = response.data;
-          console.log(data);
+          console.log(`datas: ${data}`);
 
           const today = new Date().toISOString().split("T")[0];
-          console.log(today);
+          // console.log(today);
           const presentStudents = data
             .filter((student: any) =>
               student.date_time?.dates?.some(
@@ -577,11 +577,9 @@ function AttendanceContent({
               id: student.id,
               name: student.name,
               department: "CSE",
-              checkin:
-                student.date_time.dates[student.date_time.dates.length - 1]
-                  .time,
-              checkout: "--",
-              status: "Present",
+              checkin:student.date_time.dates[0].ck_out,
+              checkout: student.date_time.dates[0].ck_out,
+              status: student.status,
             }));
 
           const presentIds = new Set(presentStudents.map((s: any) => s.id));
