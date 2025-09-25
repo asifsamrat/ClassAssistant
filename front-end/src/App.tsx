@@ -42,6 +42,7 @@ function App() {
     user: null,
     email: null,
   });
+  const [dashboarddata, setDashboarddata] = useState<any>(null);
   const navigate = useNavigate();
   // if(activeTab=="attendance") console.log("hello")
   const startCamera = async () => {
@@ -96,7 +97,7 @@ function App() {
     }
   };
 
-  const stopCamera = () => {
+  const stopCamera = async() => {
     if (intervalId.current) {
       clearInterval(intervalId.current);
       intervalId.current = null;
@@ -106,6 +107,79 @@ function App() {
       streamRef.current = null;
     }
     setShowCamera(false);
+    // datain={
+    //     "student_name": logInfo.user,
+    //     "is_present": setDashboarddata,
+    //     "total_minutes": 20,
+    //     "date": "25-09-2025"
+    //   }
+    
+    const fetchData = async () => {
+      try {
+        const response = await axios.get(
+          `${import.meta.env.VITE_API}/get_attendance`,
+          {
+            withCredentials: true,
+          }
+        );
+        const data = response.data;
+        console.log(`datas: ${data}`);
+
+        const today = new Date().toISOString().split("T")[0];
+        console.log(`neeeei`,today);
+        const presentStudents = data
+          .filter((student: any) =>
+            student.date_time?.dates?.some(
+              (entry: any) => entry.attendance_date === today
+            )
+          )
+          .map((student: any) => ({
+            id: student.id,
+            name: student.name,
+            department: "CSE",
+            checkin: student.date_time.dates[0].ck_out,
+            checkout: student.date_time.dates[0].ck_out,
+            status: student.status,
+          }));
+
+        const presentIds = new Set(presentStudents.map((s: any) => s.id));
+
+        const absentStudents = data
+          .filter((student: any) => !presentIds.has(student.id))
+          .map((student: any) => ({
+            id: student.id,
+            name: student.name,
+            department: "CSE",
+            checkin: "--",
+            checkout: "--",
+            status: "Absent",
+          }));
+
+          presentStudents.forEach((student: any) => {
+            console.log(student.status==="on");
+            let pr=false
+            if(student.status==="on time")
+            {
+              pr=true;
+            }
+            axios.post("https://cmfz0qz5295wxjxgt1to5aoac.agent.a.smyth.ai/api/attendance", {
+              student_name: student.name,
+              is_present: pr,           
+              total_minutes: 20,
+              date: "2025-09-25"          
+            })
+          }
+          )
+
+        const finalAttendance = [...presentStudents, ...absentStudents];
+
+        // setPresentToday(finalAttendance);
+        console.log("Today's Attendance:", finalAttendance);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    fetchData();
   };
 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -132,40 +206,44 @@ function App() {
         return <DashboardContent activeTab={activeTab} />;
     }
   };
-  useEffect(()=>{
-    (async ()=>{
+  useEffect(() => {
+    (async () => {
       try {
-        const response = await axios.get(`${import.meta.env.VITE_API}/stay_signin`, {
-          withCredentials: true
-        })
-        console.log(response.data.msg)
-        console.log(response.data.email)
-        if(response.data.msg ==="success")
-        {
-          setLogInfo({"user":response.data.name,"email":response.data.email})
+        const response = await axios.get(
+          `${import.meta.env.VITE_API}/stay_signin`,
+          {
+            withCredentials: true,
+          }
+        );
+        console.log(response.data.msg);
+        console.log(response.data.email);
+        if (response.data.msg === "success") {
+          setLogInfo({ user: response.data.name, email: response.data.email });
           console.log(logInfo);
         }
-
       } catch (error) {
-        navigate('/')
-        console.log(error)
+        navigate("/");
+        console.log(error);
       }
     })();
-  },[])
-  const signouthandler=async ()=>{
+  }, []);
+  const signouthandler = async () => {
     try {
-      const response = await axios.delete(`${import.meta.env.VITE_API}/signout`, {
-        withCredentials: true
-      })
+      const response = await axios.delete(
+        `${import.meta.env.VITE_API}/signout`,
+        {
+          withCredentials: true,
+        }
+      );
 
-      if(response.data.msg ==="success"){
-        navigate('/')
+      if (response.data.msg === "success") {
+        navigate("/");
       }
     } catch (error) {
       console.log(error);
       alert("signout failed");
     }
-  }
+  };
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
@@ -242,26 +320,32 @@ function App() {
           </div>
 
           {showSignOutPopup && (
-  <div className="absolute right-0 top-16 bg-white shadow-lg rounded-lg w-48 z-50 border">
-    <div className="flex flex-col items-center justify-center py-4">
-      <img
-        src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e"
-        alt="Profile"
-        className="h-10 w-10 rounded-full border-2 border-white shadow-sm"
-      />
-      <h1 className="text-center mt-2">{logInfo.user}</h1>
-    </div>
-    
-    <div className="flex">
-      <button className="block w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700" onClick={()=>signouthandler()}>
-        Sign Out
-      </button>
-      <button className="block w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700" onClick={() => setShowSignOutPopup((prev) => !prev)}>
-        Cancel
-      </button>
-    </div>
-  </div>
-)}
+            <div className="absolute right-0 top-16 bg-white shadow-lg rounded-lg w-48 z-50 border">
+              <div className="flex flex-col items-center justify-center py-4">
+                <img
+                  src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e"
+                  alt="Profile"
+                  className="h-10 w-10 rounded-full border-2 border-white shadow-sm"
+                />
+                <h1 className="text-center mt-2">{logInfo.user}</h1>
+              </div>
+
+              <div className="flex">
+                <button
+                  className="block w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700"
+                  onClick={() => signouthandler()}
+                >
+                  Sign Out
+                </button>
+                <button
+                  className="block w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700"
+                  onClick={() => setShowSignOutPopup((prev) => !prev)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </header>
 
         {/* Camera Modal */}
@@ -357,7 +441,7 @@ function App() {
 
 function DashboardContent({ activeTab }: { activeTab: string }) {
   console.log(activeTab);
-  const [dashboarddata, setDashboarddata] = useState<any>(null);
+  // const [dashboarddata, setDashboarddata] = useState<any>(null);
   const [totalstudent, setTotalstudent] = useState<number>(0);
   const [presentToday, setPresentToday] = useState<Array>([]);
   const navigate = useNavigate();
@@ -566,7 +650,7 @@ function AttendanceContent({
           console.log(`datas: ${data}`);
 
           const today = new Date().toISOString().split("T")[0];
-          // console.log(today);
+          console.log(`neeeei`,today);
           const presentStudents = data
             .filter((student: any) =>
               student.date_time?.dates?.some(
@@ -577,7 +661,7 @@ function AttendanceContent({
               id: student.id,
               name: student.name,
               department: "CSE",
-              checkin:student.date_time.dates[0].ck_out,
+              checkin: student.date_time.dates[0].ck_out,
               checkout: student.date_time.dates[0].ck_out,
               status: student.status,
             }));
@@ -594,7 +678,7 @@ function AttendanceContent({
               checkout: "--",
               status: "Absent",
             }));
-
+            // console.log(`prsen ${presentStudents}`)
           const finalAttendance = [...presentStudents, ...absentStudents];
 
           setPresentToday(finalAttendance);
@@ -659,7 +743,80 @@ function AttendanceContent({
 
     doc.save("students-attendance.pdf");
   };
-
+  async function filterByDate() {
+    const dateObject = new Date(selectedDate);
+  
+    // Adjust the date back one day
+    dateObject.setDate(dateObject.getDate());
+    
+    // Format the adjusted date to YYYY-MM-DD
+    const year = dateObject.getFullYear();
+    const month = String(dateObject.getMonth() + 1).padStart(2, "0");
+    const day = String(dateObject.getDate()).padStart(2, "0");
+  
+    const formattedDate = `${year}-${month}-${day}`;
+    console.log(`The formatted date is: ${formattedDate}`);
+    const datainfo = {
+      date: formattedDate
+    };
+    try {
+      const response = await axios.post(
+        `${import.meta.env.VITE_API}/filter_by_date`,
+        datainfo,
+        {
+          withCredentials: true,
+        }
+      );
+      const data = response.data;
+      console.log("datas:", data);
+  
+      const today = formattedDate;
+  
+      const presentStudents = data
+        .map((student: any) => {
+          // find the matching date entry for today
+          const todayEntry = student.date_time?.dates?.find(
+            (entry: any) => entry.attendance_date === today
+          );
+  
+          if (!todayEntry) return null;
+  
+          return {
+            id: student.id,
+            name: student.name,
+            department: "CSE",
+            checkin: todayEntry.ck_time ?? "--",
+            checkout: todayEntry.ck_out ?? "--",
+            status: student.status ?? "Present",
+          };
+        })
+        .filter(Boolean); // remove nulls
+  
+      const presentIds = new Set(presentStudents.map((s: any) => s.id));
+  
+      const absentStudents = data
+        .filter((student: any) => !presentIds.has(student.id))
+        .map((student: any) => ({
+          id: student.id,
+          name: student.name,
+          department: "CSE",
+          checkin: "--",
+          checkout: "--",
+          status: "Absent",
+        }));
+  
+      const finalAttendance = [...presentStudents, ...absentStudents];
+  
+      setPresentToday(finalAttendance);
+      console.log("Today's Attendance:", finalAttendance);
+    } catch (error: any) {
+      console.error(
+        "Axios Error:",
+        error.response ? error.response.data : error.message
+      );
+    }
+  }
+  
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -667,11 +824,12 @@ function AttendanceContent({
           <h2 className="text-2xl font-bold text-gray-900">Attendance</h2>
           <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-2">
             <button
-              onClick={() =>
+              onClick={() => {
                 setSelectedDate(
-                  new Date(selectedDate.setDate(selectedDate.getDate() - 1))
-                )
-              }
+                  new Date(selectedDate.setDate(selectedDate.getDate() -1))
+                );
+                filterByDate();
+              }}
               className="p-1 hover:bg-gray-100 rounded"
             >
               <ChevronLeft className="h-5 w-5" />
@@ -684,10 +842,12 @@ function AttendanceContent({
               })}
             </span>
             <button
-              onClick={() =>
+              onClick={() =>{
                 setSelectedDate(
                   new Date(selectedDate.setDate(selectedDate.getDate() + 1))
-                )
+                );
+                filterByDate();
+              }
               }
               className="p-1 hover:bg-gray-100 rounded"
             >
@@ -1177,11 +1337,11 @@ function SettingsContent({ activeTab }: { activeTab: string }) {
       end_time: endt,
       late_count: lateCount,
     };
-    console.log(settings)
+    console.log(settings);
     try {
       const response = await axios.put(
         `${import.meta.env.VITE_API}/settings`,
-        settings, 
+        settings,
         {
           withCredentials: true,
         }

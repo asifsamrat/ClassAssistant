@@ -264,6 +264,8 @@ def get_attendance():
 
     today = ds.date.today()
 
+    # print(today)
+
     for student in students:
         date_time = {
             "dates": []
@@ -304,6 +306,85 @@ def get_attendance():
         all_info.append(student_data)
 
     return jsonify(all_info), 200
+
+# filter by date
+@app.route('/filter_by_date', methods=['POST'])
+@token_required
+def filter_by_date():
+    # print("called")
+    data = request.get_json()
+    
+    print("newdate",data)
+    students = StudentModel.find_all()
+    attendances = AttendanceModel.find_all()
+    setting = Settings.find_all()[0]
+    print("total",attendances)
+    all_info = []
+
+    # Threshold time: start_time + late_count minutes
+    threshold_time = (ds.datetime.combine(ds.date.today(), setting.start_time) +
+                      ds.timedelta(minutes=setting.late_count)).time()
+
+    today_string = data.get("date")
+
+    # If no date is provided, return an error or a default value.
+    if not today_string:
+        return jsonify({"error": "Date not provided in request"}), 400
+
+    try:
+        # Convert the "YYYY-MM-DD" string into a datetime.date object.
+        # This is the key fix.
+        today = ds.datetime.strptime(today_string, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+    # ------------------- FIX END -------------------
+
+    print("server date object:", today)
+
+    print(today)
+
+    for student in students:
+        date_time = {
+            "dates": []
+        }
+        status = "--"  # Default
+
+        for attendance in attendances:
+            print(attendance.student_id)
+            if student.id == attendance.student_id and attendance.date.date() == today:
+                attend_time = attendance.date.time()
+                if attendance.is_present == 0.5:
+                    status = "late"
+                if attendance.is_present == 1:
+                    status = "on time"
+                
+                date_time["dates"].append({
+                    "attendance_date": attendance.date.strftime("%Y-%m-%d"),
+                    "ck_time": attendance.date.strftime("%H:%M:%p"),
+                    "ck_out":attendance.last_seen_time.strftime("%H:%M:%p"),
+                    "total_time": attendance.total_minutes
+                })
+                break  # No need to check more attendance records for today
+
+        # If the student has no attendance for today
+        if not date_time["dates"]:
+            date_time["dates"].append({
+                "attendance_date": "--",
+                "time": "--"
+            })
+
+        student_data = {
+            "id": student.id,
+            "name": student.name,
+            "date_time": date_time,
+            "status": status
+        }
+        print(student_data)
+        all_info.append(student_data)
+
+    return jsonify(all_info), 200
+
+
 # profile
 @app.route('/profiles',methods=['GET'])
 @token_required
