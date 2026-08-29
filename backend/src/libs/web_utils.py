@@ -34,8 +34,12 @@ class RecognitionCamera(BaseCamera):
             raise RuntimeError('Could not start camera.')
 
         print("[INFO] loading encodings...")
-        data = pickle.loads(open(ENCODINGS_FILE, "rb").read())
-        # print(len(data['encodings']) == len(data['ids']))
+        try:
+            with open(ENCODINGS_FILE, "rb") as ef:
+                data = pickle.loads(ef.read())
+        except FileNotFoundError:
+            data = {"encodings": [], "ids": []}
+            print("[WARNING] Encodings file not found. Using empty encodings.")
 
         # create in dictionary for known students from database to avoid multiple queries
         known_students = {}

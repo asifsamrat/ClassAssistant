@@ -5,8 +5,8 @@ from decouple import config
 class FlaskAppConfiguration:
     DEBUG = config('DEBUG', default=False, cast=bool)
     PROPAGATE_EXCEPTIONS = True
-    SECRET_KEY = config('SECRET_KEY')
-    JWT_SECRET_KEY = config('JWT_SECRET_KEY')
+    SECRET_KEY = config('SECRET_KEY', default='dev_class_assistant_secret_key')
+    JWT_SECRET_KEY = config('JWT_SECRET_KEY', default='dev_class_assistant_jwt_secret_key')
     UPLOADED_IMAGES_DEST = os.path.join("static", "images")
 
 

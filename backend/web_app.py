@@ -11,7 +11,11 @@ import pickle
 import base64
 from datetime import datetime as dt
 import datetime as ds
-from src.models import Settings, StudentModel, AttendanceModel, TeacherModel
+from src.models import (
+    Settings, StudentModel, AttendanceModel, TeacherModel,
+    CourseModel, EnrollmentModel, RoomModel, ExamSlotModel, ExamRoutineModel
+)
+from src.libs.exam_scheduler import SmartExamScheduler, ConflictGraph
 from datetime import date as dt, datetime as dtime
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -22,6 +26,7 @@ from src.settings import (
     DLIB_TOLERANCE,
     ENCODINGS_FILE
 )
+from src.libs.train_classifier import TrainClassifier
 load_dotenv()
 SERVER_PORT = int(os.getenv("SERVER_PORT", 5000))
 # ====== Flask App Setup ======
@@ -31,11 +36,16 @@ CORS(app,supports_credentials=True,methods=["GET", "POST", "PUT", "DELETE", "OPT
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # ====== Load Known Encodings from Pickle File ======
-with open(ENCODINGS_FILE, "rb") as file:
-    data = pickle.loads(file.read())
-    known_encodings = data["encodings"]
-    known_ids = data["ids"]
-    print("[INFO] Face encodings loaded successfully.")
+try:
+    with open(ENCODINGS_FILE, "rb") as file:
+        data = pickle.loads(file.read())
+        known_encodings = data.get("encodings", [])
+        known_ids = data.get("ids", [])
+        print("[INFO] Face encodings loaded successfully.")
+except FileNotFoundError:
+    known_encodings = []
+    known_ids = []
+    print("[WARNING] Face encodings file not found. Starting with empty encodings.")
 
 # ====== Helper: Face Recognition & Attendance ======
 def recognize_faces_and_mark_attendance(encodings):
@@ -573,6 +583,303 @@ def signout():
     resp.delete_cookie(cookie_name)
     print("user signout")
     return resp, 200 
+
+# ====== Student Registration & Image Capture ======
+registration_counts = {}
+
+@app.route('/register_student', methods=['POST'])
+@token_required
+def register_student():
+    data = request.get_json() or {}
+    name = data.get("name", "").strip()
+    if not name:
+        return jsonify({"error": "Student name is required"}), 400
+
+    student = StudentModel(name=name)
+    try:
+        student.save_to_db()
+    except Exception as e:
+        return jsonify({"error": f"Failed to save student: {str(e)}"}), 500
+
+    id_path = os.path.join(DATASET_PATH, str(student.id))
+    if not os.path.exists(id_path):
+        os.makedirs(id_path)
+
+    registration_counts[student.id] = 0
+    return jsonify({"id": student.id, "name": student.name, "message": "Student created successfully"}), 201
+
+
+@socketio.on('register_capture_frame')
+def handle_register_capture_frame(data):
+    global known_encodings, known_ids
+    try:
+        if isinstance(data, dict):
+            student_id = data.get('student_id')
+            frame_bytes = data.get('frame')
+        else:
+            student_id = None
+            frame_bytes = data
+
+        if not student_id or not frame_bytes:
+            return
+
+        student_id = int(student_id)
+        np_arr = np.frombuffer(frame_bytes, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return
+
+        face_classifier = cv2.CascadeClassifier(HAAR_CASCADE_PATH)
+        faces = face_classifier.detectMultiScale(frame, 1.0485258, 6)
+
+        current_count = registration_counts.get(student_id, 0)
+
+        if len(faces) > 0:
+            for (x, y, w, h) in faces:
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+            if current_count < 15:
+                current_count += 1
+                registration_counts[student_id] = current_count
+
+                id_path = os.path.join(DATASET_PATH, str(student_id))
+                if not os.path.exists(id_path):
+                    os.makedirs(id_path)
+
+                img_path = os.path.join(id_path, f"{current_count}.jpg")
+                cv2.imwrite(img_path, frame)
+
+                emit('register_progress', {
+                    'student_id': student_id,
+                    'captured_count': current_count,
+                    'target': 15,
+                    'status': 'capturing'
+                })
+
+                if current_count >= 15:
+                    emit('register_progress', {
+                        'student_id': student_id,
+                        'captured_count': 15,
+                        'target': 15,
+                        'status': 'training'
+                    })
+
+                    print(f"[INFO] Starting model training for student {student_id}...")
+                    TrainClassifier.train()
+
+                    try:
+                        with open(ENCODINGS_FILE, "rb") as ef:
+                            enc_data = pickle.loads(ef.read())
+                            known_encodings = enc_data.get("encodings", [])
+                            known_ids = enc_data.get("ids", [])
+                            print("[INFO] Reloaded encodings in memory successfully.")
+                    except Exception as e:
+                        print(f"[ERROR] Failed reloading encodings: {e}")
+
+                    registration_counts.pop(student_id, None)
+                    emit('register_complete', {
+                        'student_id': student_id,
+                        'message': 'Student face registered and model trained successfully!'
+                    })
+
+        success, buffer = cv2.imencode('.jpg', frame)
+        if success:
+            emit('register_processed_frame', buffer.tobytes())
+
+    except Exception as e:
+        print("[ERROR in register_capture_frame]", e)
+
+# ====== Smart Exam Routine Generator APIs ======
+def get_default_seed_data():
+    students = [
+        {"id": 1, "name": "S1", "section": "Section A"},
+        {"id": 2, "name": "S2", "section": "Section A"},
+        {"id": 3, "name": "S3", "section": "Section A"},
+        {"id": 4, "name": "S4", "section": "Section B"},
+        {"id": 5, "name": "S5", "section": "Section B"}
+    ]
+    courses = [
+        {"id": 1, "code": "CSE101", "name": "Structured Programming", "section": "Section A", "is_open_credit": False},
+        {"id": 2, "code": "CSE102", "name": "Data Structures", "section": "Section A", "is_open_credit": False},
+        {"id": 3, "code": "CSE103", "name": "Discrete Mathematics", "section": "Section B", "is_open_credit": False},
+        {"id": 4, "code": "CSE104", "name": "Algorithms", "section": "Section B", "is_open_credit": False},
+        {"id": 5, "code": "CSE201", "name": "Database Systems", "section": "Open Credit", "is_open_credit": True}
+    ]
+    enrollments = [
+        {"student_id": 1, "course_code": "CSE101"},
+        {"student_id": 1, "course_code": "CSE102"},
+        {"student_id": 2, "course_code": "CSE101"},
+        {"student_id": 2, "course_code": "CSE103"},
+        {"student_id": 3, "course_code": "CSE102"},
+        {"student_id": 3, "course_code": "CSE104"},
+        {"student_id": 4, "course_code": "CSE103"},
+        {"student_id": 4, "course_code": "CSE104"},
+        {"student_id": 5, "course_code": "CSE101"},
+        {"student_id": 5, "course_code": "CSE104"},
+        {"student_id": 1, "course_code": "CSE201"},
+        {"student_id": 4, "course_code": "CSE201"}
+    ]
+    slots = [
+        {"id": 1, "exam_date": "Day 1", "start_time": "10:00 AM", "end_time": "12:00 PM", "slot_name": "Day 1 - 10:00 AM"},
+        {"id": 2, "exam_date": "Day 1", "start_time": "02:00 PM", "end_time": "04:00 PM", "slot_name": "Day 1 - 02:00 PM"},
+        {"id": 3, "exam_date": "Day 2", "start_time": "10:00 AM", "end_time": "12:00 PM", "slot_name": "Day 2 - 10:00 AM"},
+        {"id": 4, "exam_date": "Day 2", "start_time": "02:00 PM", "end_time": "04:00 PM", "slot_name": "Day 2 - 02:00 PM"}
+    ]
+    rooms = [
+        {"id": 1, "room_number": "Room 101", "capacity": 50},
+        {"id": 2, "room_number": "Room 102", "capacity": 40}
+    ]
+    return students, courses, enrollments, slots, rooms
+
+@app.route('/api/exam-routine/generate', methods=['POST'])
+@app.route('/exam_routine/generate', methods=['POST'])
+def generate_exam_routine():
+    try:
+        data = request.get_json() or {}
+        
+        req_students = data.get("students")
+        req_courses = data.get("courses")
+        req_enrollments = data.get("enrollments")
+        req_slots = data.get("slots")
+        req_rooms = data.get("rooms")
+
+        def_students, def_courses, def_enrollments, def_slots, def_rooms = get_default_seed_data()
+
+        students = req_students if req_students is not None else [s.to_dict() for s in StudentModel.find_all()]
+        if not students:
+            students = def_students
+
+        courses = req_courses if req_courses is not None else [c.to_dict() for c in CourseModel.find_all()]
+        if not courses:
+            courses = def_courses
+
+        slots = req_slots if req_slots is not None else [s.to_dict() for s in ExamSlotModel.find_all()]
+        if not slots:
+            slots = def_slots
+
+        rooms = req_rooms if req_rooms is not None else [r.to_dict() for r in RoomModel.find_all()]
+        if not rooms:
+            rooms = def_rooms
+
+        if req_enrollments is not None:
+            enrollments = req_enrollments
+        else:
+            db_en = EnrollmentModel.find_all()
+            if db_en:
+                enrollments = []
+                for e in db_en:
+                    c = CourseModel.find_by_id(e.course_id)
+                    if c:
+                        enrollments.append({"student_id": e.student_id, "course_code": c.code})
+            else:
+                enrollments = def_enrollments
+
+        scheduler = SmartExamScheduler(students, courses, enrollments, slots, rooms)
+        result = scheduler.solve()
+
+        if result.get("status") == "success":
+            try:
+                rec = ExamRoutineModel(routine_json=json.dumps(result))
+                rec.save_to_db()
+            except Exception as ex:
+                print(f"[WARNING] Could not save routine to DB: {ex}")
+
+        return jsonify(result), 200
+    except Exception as e:
+        print("[ERROR in generate_exam_routine]", e)
+        return jsonify({"status": "failed", "error": str(e)}), 500
+
+
+@app.route('/api/exam-routine', methods=['GET'])
+@app.route('/exam_routine', methods=['GET'])
+def get_exam_routine():
+    try:
+        latest = ExamRoutineModel.find_latest()
+        if latest:
+            return jsonify(json.loads(latest.routine_json)), 200
+        
+        def_students, def_courses, def_enrollments, def_slots, def_rooms = get_default_seed_data()
+        scheduler = SmartExamScheduler(def_students, def_courses, def_enrollments, def_slots, def_rooms)
+        result = scheduler.solve()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/exam-routine/conflicts', methods=['GET'])
+@app.route('/exam_routine/conflicts', methods=['GET'])
+def get_exam_conflicts():
+    try:
+        def_students, def_courses, def_enrollments, _, _ = get_default_seed_data()
+        cg = ConflictGraph(def_students, def_courses, def_enrollments)
+        return jsonify(cg.to_dict()), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/exam-routine/statistics', methods=['GET'])
+@app.route('/exam_routine/statistics', methods=['GET'])
+def get_exam_statistics():
+    try:
+        latest = ExamRoutineModel.find_latest()
+        if latest:
+            res_data = json.loads(latest.routine_json)
+            return jsonify(res_data.get("statistics", {})), 200
+        
+        def_students, def_courses, def_enrollments, def_slots, def_rooms = get_default_seed_data()
+        scheduler = SmartExamScheduler(def_students, def_courses, def_enrollments, def_slots, def_rooms)
+        result = scheduler.solve()
+        return jsonify(result.get("statistics", {})), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/exam-routine/seed', methods=['POST'])
+@app.route('/exam_routine/seed', methods=['POST'])
+def seed_exam_data():
+    try:
+        def_students, def_courses, def_enrollments, def_slots, def_rooms = get_default_seed_data()
+        
+        for s in def_students:
+            if not StudentModel.find_by_name(s["name"]):
+                st = StudentModel(name=s["name"])
+                st.save_to_db()
+
+        for c in def_courses:
+            if not CourseModel.find_by_code(c["code"]):
+                cm = CourseModel(code=c["code"], name=c["name"], section=c["section"], is_open_credit=c["is_open_credit"])
+                cm.save_to_db()
+
+        for r in def_rooms:
+            if not RoomModel.find_by_id(r["id"]):
+                rm = RoomModel(room_number=r["room_number"], capacity=r["capacity"])
+                rm.save_to_db()
+
+        for sl in def_slots:
+            if not ExamSlotModel.find_all():
+                esm = ExamSlotModel(exam_date=sl["exam_date"], start_time=sl["start_time"], end_time=sl["end_time"], slot_name=sl["slot_name"])
+                esm.save_to_db()
+
+        return jsonify({"message": "Seed exam data successfully inserted into database!", "seed_data": get_default_seed_data()}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/train_classifier', methods=['POST'])
+@token_required
+def train_classifier():
+    global known_encodings, known_ids
+    try:
+        TrainClassifier.train()
+        with open(ENCODINGS_FILE, "rb") as ef:
+            enc_data = pickle.loads(ef.read())
+            known_encodings = enc_data.get("encodings", [])
+            known_ids = enc_data.get("ids", [])
+        return jsonify({"message": "Classifier trained successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Training failed: {str(e)}"}), 500
+
 # ====== Start Server ======
 if __name__ == '__main__':
     print("[INFO] Starting Flask-SocketIO server...")

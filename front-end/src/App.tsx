@@ -26,8 +26,11 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  BookOpen,
+  Sparkles,
 } from "lucide-react";
 import axios from "axios";
+import ExamRoutine from "./components/ExamRoutine";
 
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -35,7 +38,7 @@ function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const intervalId = useRef<NodeJS.Timeout | null>(null);
+  const intervalId = useRef<ReturnType<typeof setInterval> | any>(null);
   const [processedImage, setProcessedImage] = useState("");
   const [showSignOutPopup, setShowSignOutPopup] = useState(false);
   const [logInfo, setLogInfo] = useState({
@@ -200,6 +203,8 @@ function App() {
         return <StudentsContent activeTab={activeTab} />;
       case "logs":
         return <TimeLogsContent activeTab={activeTab} />;
+      case "exam_routine":
+        return <ExamRoutine />;
       case "settings":
         return <SettingsContent activeTab={activeTab} />;
       default:
@@ -259,6 +264,7 @@ function App() {
             { name: "Attendance", icon: Calendar, id: "attendance" },
             { name: "Students", icon: Users, id: "students" },
             { name: "Time Logs", icon: Clock, id: "logs" },
+            { name: "Exam Routine", icon: BookOpen, id: "exam_routine" },
             { name: "Settings", icon: Settings, id: "settings" },
           ].map((item) => (
             <button
@@ -441,17 +447,15 @@ function App() {
 
 function DashboardContent({ activeTab }: { activeTab: string }) {
   console.log(activeTab);
-  // const [dashboarddata, setDashboarddata] = useState<any>(null);
+  const [dashboarddata, setDashboarddata] = useState<any>(null);
   const [totalstudent, setTotalstudent] = useState<number>(0);
-  const [presentToday, setPresentToday] = useState<Array>([]);
+  const [presentToday, setPresentToday] = useState<Array<any>>([]);
   const navigate = useNavigate();
   useEffect(() => {
     if (activeTab === "dashboard") {
       navigate(`/attendance-system/dashboard`);
       const fetchData = async () => {
         try {
-          // const response = await axios.get("http://localhost:5000/dashboard");
-
           const response = await axios.get(
             `${import.meta.env.VITE_API}/dashboard`,
             {
@@ -463,21 +467,29 @@ function DashboardContent({ activeTab }: { activeTab: string }) {
           setDashboarddata(data);
           setTotalstudent(data.length);
 
-          // Filter for today's attendance
-          const today = new Date().toISOString().split("T")[0];
+          // Filter for today's attendance using local YYYY-MM-DD format
+          const d = new Date();
+          const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
           const filtered = data
             .filter((student: any) =>
               student.date_time?.dates?.some(
                 (entry: any) => entry.attendance_date === today
               )
             )
-            .map((student: any) => ({
-              id: student.id,
-              name: student.name,
-              time: student.date_time.dates[student.date_time.dates.length - 1]
-                .time,
-              status: "Checked In",
-            }));
+            .map((student: any) => {
+              const todayEntries = student.date_time?.dates?.filter(
+                (entry: any) => entry.attendance_date === today
+              );
+              const lastEntry = (todayEntries && todayEntries.length > 0)
+                ? todayEntries[todayEntries.length - 1]
+                : (student.date_time?.dates?.[student.date_time.dates.length - 1] || null);
+              return {
+                id: student.id,
+                name: student.name,
+                time: lastEntry ? (lastEntry.time || lastEntry.ck_time || "--") : "--",
+                status: "Checked In",
+              };
+            });
 
           setPresentToday(filtered);
           console.log("Present today:", filtered);
@@ -633,7 +645,7 @@ function AttendanceContent({
 }) {
   console.log(activeTab);
 
-  const [presentToday, setPresentToday] = useState<Array>([]);
+  const [presentToday, setPresentToday] = useState<Array<any>>([]);
   const navigate = useNavigate();
   useEffect(() => {
     if (activeTab === "attendance") {
@@ -649,22 +661,28 @@ function AttendanceContent({
           const data = response.data;
           console.log(`datas: ${data}`);
 
-          const today = new Date().toISOString().split("T")[0];
-          console.log(`neeeei`,today);
+          const d = new Date();
+          const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          console.log(`neeeei`, today);
           const presentStudents = data
             .filter((student: any) =>
               student.date_time?.dates?.some(
                 (entry: any) => entry.attendance_date === today
               )
             )
-            .map((student: any) => ({
-              id: student.id,
-              name: student.name,
-              department: "CSE",
-              checkin: student.date_time.dates[0].ck_out,
-              checkout: student.date_time.dates[0].ck_out,
-              status: student.status,
-            }));
+            .map((student: any) => {
+              const todayEntry = student.date_time?.dates?.find(
+                (entry: any) => entry.attendance_date === today
+              );
+              return {
+                id: student.id,
+                name: student.name,
+                department: "CSE",
+                checkin: todayEntry?.ck_time ?? todayEntry?.time ?? "--",
+                checkout: todayEntry?.ck_out ?? todayEntry?.time ?? "--",
+                status: student.status || "Present",
+              };
+            });
 
           const presentIds = new Set(presentStudents.map((s: any) => s.id));
 
@@ -678,7 +696,7 @@ function AttendanceContent({
               checkout: "--",
               status: "Absent",
             }));
-            // console.log(`prsen ${presentStudents}`)
+
           const finalAttendance = [...presentStudents, ...absentStudents];
 
           setPresentToday(finalAttendance);
@@ -704,7 +722,7 @@ function AttendanceContent({
       ["STUDENT", "DEPARTMENT", "CHECK IN", "CHECK OUT", "STATUS"],
     ];
 
-    const rows = presentToday.map((std) => [
+    const rows = presentToday.map((std: any) => [
       std.name,
       std.department,
       std.checkin,
@@ -712,7 +730,7 @@ function AttendanceContent({
       std.status,
     ]);
 
-    doc.autoTable({
+    (doc as any).autoTable({
       startY: 30,
       head: headers,
       body: rows,
@@ -730,7 +748,7 @@ function AttendanceContent({
         fontSize: 10,
         overflow: "linebreak",
       },
-      didParseCell: function (data) {
+      didParseCell: function (data: any) {
         if (data.column.index === 4 && data.cell.text[0] === "Present") {
           data.cell.styles.fillColor = [212, 237, 218]; // light green
           data.cell.styles.textColor = [40, 167, 69]; // green
@@ -985,102 +1003,356 @@ function AttendanceContent({
 
 function StudentsContent({ activeTab }: { activeTab: string }) {
   const [profile, setProfile] = useState<Array<any>>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [studentName, setStudentName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [regStep, setRegStep] = useState<"input" | "capturing" | "training" | "complete">("input");
+  const [capturedCount, setCapturedCount] = useState(0);
+  const [regStudentId, setRegStudentId] = useState<number | null>(null);
+  const [regProcessedImage, setRegProcessedImage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+
+  const regVideoRef = useRef<HTMLVideoElement>(null);
+  const regCanvasRef = useRef<HTMLCanvasElement>(null);
+  const regStreamRef = useRef<MediaStream | null>(null);
+  const regIntervalId = useRef<NodeJS.Timeout | null>(null);
+
   const navigate = useNavigate();
+
+  const fetchProfiles = async () => {
+    try {
+      const response = await axios.get(
+        `${import.meta.env.VITE_API}/profiles`,
+        { withCredentials: true }
+      );
+      setProfile(response.data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   useEffect(() => {
-    if (activeTab == "students") navigate(`/attendance-system/students`);
-    (async () => {
-      try {
-        const response = await axios.get(
-          `${import.meta.env.VITE_API}/profiles`,
-          {
-            withCredentials: true,
-          }
-        );
-        setProfile(response.data);
-        console.log(response.data);
-      } catch (error) {
-        console.log(error);
+    if (activeTab == "students") {
+      navigate(`/attendance-system/students`);
+      fetchProfiles();
+    }
+  }, [activeTab]);
+
+  const stopRegCamera = () => {
+    if (regIntervalId.current) {
+      clearInterval(regIntervalId.current);
+      regIntervalId.current = null;
+    }
+    if (regStreamRef.current) {
+      regStreamRef.current.getTracks().forEach((track) => track.stop());
+      regStreamRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    const handleProgress = (data: any) => {
+      if (data && data.captured_count !== undefined) {
+        setCapturedCount(data.captured_count);
+        if (data.status === "training") {
+          setRegStep("training");
+          setStatusMessage("Capturing complete! Training AI Classifier Model...");
+        } else {
+          setStatusMessage(`Captured ${data.captured_count} / 15 face samples`);
+        }
       }
-    })();
+    };
+
+    const handleProcessedFrame = (buffer: ArrayBuffer) => {
+      const blob = new Blob([buffer], { type: "image/jpeg" });
+      const url = URL.createObjectURL(blob);
+      setRegProcessedImage(url);
+    };
+
+    const handleComplete = (data: any) => {
+      setRegStep("complete");
+      setStatusMessage(data.message || "Student registered and AI model trained successfully!");
+      toast.success("Student registered and trained successfully!");
+      stopRegCamera();
+      fetchProfiles();
+    };
+
+    socket.on("register_progress", handleProgress);
+    socket.on("register_processed_frame", handleProcessedFrame);
+    socket.on("register_complete", handleComplete);
+
+    return () => {
+      socket.off("register_progress", handleProgress);
+      socket.off("register_processed_frame", handleProcessedFrame);
+      socket.off("register_complete", handleComplete);
+    };
   }, []);
+
+  const handleCloseModal = () => {
+    stopRegCamera();
+    setShowAddModal(false);
+    setRegStep("input");
+    setStudentName("");
+    setCapturedCount(0);
+    setRegStudentId(null);
+    setRegProcessedImage("");
+    setStatusMessage("");
+  };
+
+  const handleStartRegister = async () => {
+    if (!studentName.trim()) {
+      toast.error("Please enter a student name");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await axios.post(
+        `${import.meta.env.VITE_API}/register_student`,
+        { name: studentName.trim() },
+        { withCredentials: true }
+      );
+
+      const createdStudentId = res.data.id;
+      setRegStudentId(createdStudentId);
+      setRegStep("capturing");
+      setStatusMessage("Starting camera... Please look at the camera");
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false,
+      });
+
+      regStreamRef.current = stream;
+
+      setTimeout(() => {
+        if (regVideoRef.current) {
+          regVideoRef.current.srcObject = stream;
+          regVideoRef.current.play().catch((err) => console.error("Play error:", err));
+
+          regIntervalId.current = setInterval(() => {
+            const canvas = regCanvasRef.current;
+            const video = regVideoRef.current;
+            if (canvas && video) {
+              const context = canvas.getContext("2d");
+              if (context) {
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(
+                  (blob) => {
+                    if (blob) {
+                      blob.arrayBuffer().then((buffer) => {
+                        socket.emit("register_capture_frame", {
+                          student_id: createdStudentId,
+                          frame: new Uint8Array(buffer),
+                        });
+                      });
+                    }
+                  },
+                  "image/jpeg",
+                  0.7
+                );
+              }
+            }
+          }, 350);
+        }
+      }, 300);
+
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.response?.data?.error || "Failed to register student");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Students</h2>
-        <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+        <button
+          onClick={() => {
+            setShowAddModal(true);
+            setRegStep("input");
+            setStudentName("");
+            setCapturedCount(0);
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+        >
           <UserPlus className="h-5 w-5" />
           Add Student
         </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {
-          // [
-          //   {
-          //     name: "Sarah Wilson",
-          //     role: "Senior Engineer",
-          //     department: "Engineering",
-          //     image:
-          //       "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-          //   },
-          //   {
-          //     name: "Michael Chen",
-          //     role: "UI Designer",
-          //     department: "Design",
-          //     image:
-          //       "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-          //   },
-          //   {
-          //     name: "Emma Thompson",
-          //     role: "Marketing Manager",
-          //     department: "Marketing",
-          //     image:
-          //       "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-          //   },
-          //   {
-          //     name: "James Rodriguez",
-          //     role: "Sales Executive",
-          //     department: "Sales",
-          //     image:
-          //       "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-          //   },
-          // ]
-          profile.map((profiles, index) => (
-            <div key={index} className="bg-white rounded-xl shadow-sm p-6">
-              <div className="flex items-center gap-4">
-                <img
-                  src={user}
-                  alt={profiles.name}
-                  className="h-16 w-16 rounded-full object-cover"
-                />
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {profiles.name}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    {profiles.description}
-                  </p>
-                  <p className="text-sm text-gray-500">{profiles.department}</p>
-                </div>
-              </div>
-              <div className="mt-4 flex gap-2">
-                <button className="flex-1 px-4 py-2 text-sm text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100">
-                  View Profile
-                </button>
-                <button className="flex-1 px-4 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100">
-                  Edit
-                </button>
+        {profile.map((profiles, index) => (
+          <div key={index} className="bg-white rounded-xl shadow-sm p-6">
+            <div className="flex items-center gap-4">
+              <img
+                src={user}
+                alt={profiles.name}
+                className="h-16 w-16 rounded-full object-cover"
+              />
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {profiles.name}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {profiles.description}
+                </p>
+                <p className="text-sm text-gray-500">{profiles.department}</p>
               </div>
             </div>
-          ))
-        }
+            <div className="mt-4 flex gap-2">
+              <button className="flex-1 px-4 py-2 text-sm text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 font-medium">
+                View Profile
+              </button>
+              <button className="flex-1 px-4 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 font-medium">
+                Edit
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {/* Add Student & Face Capture Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-6">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-4">
+              <h3 className="text-xl font-bold text-gray-900">
+                Register New Student & Train AI
+              </h3>
+              <button
+                onClick={handleCloseModal}
+                className="text-gray-400 hover:text-gray-600 text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {regStep === "input" && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Student Full Name
+                  </label>
+                  <input
+                    type="text"
+                    value={studentName}
+                    onChange={(e) => setStudentName(e.target.value)}
+                    placeholder="Enter student full name"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+                <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-lg text-sm text-indigo-800 space-y-1">
+                  <p className="font-semibold text-indigo-900">Registration Process:</p>
+                  <p>• Step 1: Enter student name and click "Start Face Capture".</p>
+                  <p>• Step 2: Position student in front of camera to capture 15 face samples.</p>
+                  <p>• Step 3: The AI model will automatically train on the captured samples.</p>
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={handleCloseModal}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleStartRegister}
+                    disabled={isSubmitting || !studentName.trim()}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium"
+                  >
+                    {isSubmitting ? "Starting..." : "Start Face Capture"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(regStep === "capturing" || regStep === "training") && (
+              <div className="space-y-4 text-center">
+                <div className="flex justify-center gap-4">
+                  <div className="w-[300px] h-[220px] border-2 border-indigo-500 rounded-lg overflow-hidden relative bg-black">
+                    <video
+                      ref={regVideoRef}
+                      muted
+                      autoPlay
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                    <canvas
+                      ref={regCanvasRef}
+                      width="300"
+                      height="220"
+                      className="hidden"
+                    />
+                  </div>
+                  {regProcessedImage && (
+                    <div className="w-[300px] h-[220px] border-2 border-green-500 rounded-lg overflow-hidden bg-black">
+                      <img
+                        src={regProcessedImage}
+                        alt="Face Detection"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {statusMessage}
+                  </p>
+                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 ${
+                        regStep === "training" ? "bg-indigo-600 animate-pulse" : "bg-green-500"
+                      }`}
+                      style={{
+                        width: regStep === "training" ? "100%" : `${(capturedCount / 15) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={handleCloseModal}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {regStep === "complete" && (
+              <div className="text-center py-6 space-y-4">
+                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl font-bold">
+                  ✓
+                </div>
+                <h4 className="text-xl font-bold text-gray-900">
+                  Registration & AI Training Complete!
+                </h4>
+                <p className="text-sm text-gray-600">
+                  Student <span className="font-semibold text-gray-900">{studentName}</span> face data has been captured and the classifier model trained.
+                </p>
+                <div className="pt-4">
+                  <button
+                    onClick={handleCloseModal}
+                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function TimeLogsContent({ activeTab }: { activeTab: string }) {
-  const [timeslogs, setTimeslogs] = useState<Array>([]);
+  const [timeslogs, setTimeslogs] = useState<Array<any>>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -1095,14 +1367,14 @@ function TimeLogsContent({ activeTab }: { activeTab: string }) {
         );
         console.log(response.data);
         const filtered = response.data
-          .filter((item) => item.date_time.dates[0].attendance_date !== "--")
-          .map((item) => ({
-            date: item.date_time.dates[0].attendance_date,
+          .filter((item: any) => item.date_time?.dates?.[0]?.attendance_date && item.date_time?.dates?.[0]?.attendance_date !== "--")
+          .map((item: any) => ({
+            date: item.date_time?.dates?.[0]?.attendance_date || "--",
             name: item.name,
-            checkin: item.date_time.dates[0].ck_time,
+            checkin: item.date_time?.dates?.[0]?.ck_time || "--",
             status: item.status,
-            checkout: item.date_time.dates[0].ck_out,
-            totalhours: item.date_time.dates[0].total_time,
+            checkout: item.date_time?.dates?.[0]?.ck_out || "--",
+            totalhours: item.date_time?.dates?.[0]?.total_time || 0,
           }));
         setTimeslogs(filtered);
         console.log(filtered);
@@ -1124,7 +1396,7 @@ function TimeLogsContent({ activeTab }: { activeTab: string }) {
       ["DATE", "STUDENT", "CHECK IN", "CHECK OUT", "TOTAL MINUETS", "STATUS"],
     ];
 
-    const rows = timeslogs.map((std) => [
+    const rows = timeslogs.map((std: any) => [
       std.date,
       std.name,
       std.checkin,
@@ -1133,7 +1405,7 @@ function TimeLogsContent({ activeTab }: { activeTab: string }) {
       std.status,
     ]);
 
-    doc.autoTable({
+    (doc as any).autoTable({
       startY: 30,
       head: headers,
       body: rows,
@@ -1151,7 +1423,7 @@ function TimeLogsContent({ activeTab }: { activeTab: string }) {
         fontSize: 10,
         overflow: "linebreak",
       },
-      didParseCell: function (data) {
+      didParseCell: function (data: any) {
         if (data.column.index === 4 && data.cell.text[0] === "on time") {
           data.cell.styles.fillColor = [212, 237, 218]; // light green
           data.cell.styles.textColor = [40, 167, 69]; // green

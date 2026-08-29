@@ -246,5 +246,155 @@ class VideoFeedModel(Base):
         Session.delete(self)
         Session.commit()
 
+
+class CourseModel(Base):
+    __tablename__ = "courses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(50), nullable=False, unique=True)
+    name = Column(String(100), nullable=False)
+    section = Column(String(50), nullable=False, default="Section A")
+    is_open_credit = Column(Boolean, default=False)
+
+    enrollments = relationship("EnrollmentModel", backref="course", cascade="all, delete-orphan")
+
+    @classmethod
+    def find_by_code(cls, code: str) -> "CourseModel":
+        return Session.query(cls).filter_by(code=code).first()
+
+    @classmethod
+    def find_by_id(cls, _id: int) -> "CourseModel":
+        return Session.query(cls).filter_by(id=_id).first()
+
+    @classmethod
+    def find_all(cls) -> List["CourseModel"]:
+        return Session.query(cls).all()
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "code": self.code,
+            "name": self.name,
+            "section": self.section,
+            "is_open_credit": self.is_open_credit
+        }
+
+    def save_to_db(self) -> None:
+        Session.add(self)
+        Session.commit()
+
+    def delete_from_db(self) -> None:
+        Session.delete(self)
+        Session.commit()
+
+
+class EnrollmentModel(Base):
+    __tablename__ = "enrollments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+
+    student_rel = relationship("StudentModel", backref=backref("enrollments", cascade="all, delete-orphan"))
+
+    @classmethod
+    def find_by_student(cls, student_id: int) -> List["EnrollmentModel"]:
+        return Session.query(cls).filter_by(student_id=student_id).all()
+
+    @classmethod
+    def find_by_course(cls, course_id: int) -> List["EnrollmentModel"]:
+        return Session.query(cls).filter_by(course_id=course_id).all()
+
+    @classmethod
+    def find_all(cls) -> List["EnrollmentModel"]:
+        return Session.query(cls).all()
+
+    def save_to_db(self) -> None:
+        Session.add(self)
+        Session.commit()
+
+    def delete_from_db(self) -> None:
+        Session.delete(self)
+        Session.commit()
+
+
+class RoomModel(Base):
+    __tablename__ = "rooms"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    room_number = Column(String(50), nullable=False, unique=True)
+    capacity = Column(Integer, nullable=False, default=50)
+
+    @classmethod
+    def find_by_id(cls, _id: int) -> "RoomModel":
+        return Session.query(cls).filter_by(id=_id).first()
+
+    @classmethod
+    def find_all(cls) -> List["RoomModel"]:
+        return Session.query(cls).all()
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "room_number": self.room_number,
+            "capacity": self.capacity
+        }
+
+    def save_to_db(self) -> None:
+        Session.add(self)
+        Session.commit()
+
+    def delete_from_db(self) -> None:
+        Session.delete(self)
+        Session.commit()
+
+
+class ExamSlotModel(Base):
+    __tablename__ = "exam_slots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    exam_date = Column(String(50), nullable=False)  # e.g., "Day 1"
+    start_time = Column(String(20), nullable=False) # e.g., "10:00 AM"
+    end_time = Column(String(20), nullable=False)   # e.g., "12:00 PM"
+    slot_name = Column(String(100), nullable=True)
+
+    @classmethod
+    def find_all(cls) -> List["ExamSlotModel"]:
+        return Session.query(cls).all()
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "exam_date": self.exam_date,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "slot_name": self.slot_name or f"{self.exam_date} - {self.start_time}"
+        }
+
+    def save_to_db(self) -> None:
+        Session.add(self)
+        Session.commit()
+
+    def delete_from_db(self) -> None:
+        Session.delete(self)
+        Session.commit()
+
+
+class ExamRoutineModel(Base):
+    __tablename__ = "exam_routines"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(DateTime, default=dtime.now)
+    routine_json = Column(String, nullable=False)
+
+    @classmethod
+    def find_latest(cls) -> "ExamRoutineModel":
+        return Session.query(cls).order_by(cls.id.desc()).first()
+
+    def save_to_db(self) -> None:
+        Session.add(self)
+        Session.commit()
+
+
 Base.metadata.create_all(engine)
-Settings.initialize_default_settings()
+Settings.initialize_default_settings()

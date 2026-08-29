@@ -3,7 +3,9 @@ import pickle
 from typing import Union
 from datetime import date as dt
 
+# pyrefly: ignore [missing-import]
 import cv2
+# pyrefly: ignore [missing-import]
 import face_recognition
 
 from src.models import StudentModel, AttendanceModel
@@ -92,10 +94,13 @@ class CliAppUtils:
         cap.release()
         cv2.destroyAllWindows()
 
-    def recognize_n_attendance(self):
         print("[INFO] loading encodings...")
-        data = pickle.loads(open(ENCODINGS_FILE, "rb").read())
-        # print(len(data['encodings']) == len(data['ids']))
+        try:
+            with open(ENCODINGS_FILE, "rb") as ef:
+                data = pickle.loads(ef.read())
+        except FileNotFoundError:
+            print("[ERROR] Encodings file not found. Please train the classifier model first.")
+            return
         
         print("[INFO] starting video stream...")
         # store input video stream in cap variable
