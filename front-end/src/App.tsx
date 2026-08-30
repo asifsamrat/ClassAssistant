@@ -1015,7 +1015,7 @@ function StudentsContent({ activeTab }: { activeTab: string }) {
   const regVideoRef = useRef<HTMLVideoElement>(null);
   const regCanvasRef = useRef<HTMLCanvasElement>(null);
   const regStreamRef = useRef<MediaStream | null>(null);
-  const regIntervalId = useRef<NodeJS.Timeout | null>(null);
+  const regIntervalId = useRef<number | null>(null);
 
   const navigate = useNavigate();
 
