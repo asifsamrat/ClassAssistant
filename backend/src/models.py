@@ -20,15 +20,16 @@ class TeacherModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
     email = Column(String(120), nullable=False, unique=True)
-    password = Column(String(80), nullable=False)
+    password = Column(String(255), nullable=False)
     role = Column(String(20), default="user")  # Can be "user" or "admin"
+    courses = Column(String(500), default="")
 
-
-    def __init__(self, name, email, password, role="user"):
+    def __init__(self, name, email, password, role="user", courses=""):
         self.name = name
         self.email = email
         self.password = password
         self.role = role
+        self.courses = courses
 
     @classmethod
     def find_by_email(cls, email: str) -> "TeacherModel":
@@ -37,6 +38,19 @@ class TeacherModel(Base):
     @classmethod
     def find_by_id(cls, _id: int) -> "TeacherModel":
         return Session.query(cls).filter_by(id=_id).first()
+
+    @classmethod
+    def find_all(cls) -> List["TeacherModel"]:
+        return Session.query(cls).all()
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "role": self.role,
+            "courses": self.courses or ""
+        }
 
     def save_to_db(self) -> None:
         Session.add(self)
@@ -47,12 +61,13 @@ class TeacherModel(Base):
         Session.commit()
 
 
-
 class StudentModel(Base):
     __tablename__ = "students"
 
     id = Column(Integer, primary_key=True)
     name = Column(String(80), unique=True, nullable=False)
+    password = Column(String(255), nullable=True)
+    courses = Column(String(500), default="")
     attendances = relationship(
         "AttendanceModel",
         backref=backref("student")
@@ -69,10 +84,12 @@ class StudentModel(Base):
     @classmethod
     def find_all(cls) -> List["StudentModel"]:
         return Session.query(cls).all()
+
     def to_dict(self):
         return {
             "id": self.id,
-            "name": self.name
+            "name": self.name,
+            "courses": self.courses or ""
         }
 
     def save_to_db(self) -> None:
@@ -82,6 +99,77 @@ class StudentModel(Base):
     def delete_from_db(self) -> None:
         Session.delete(self)
         Session.commit()
+
+
+class CourseModel(Base):
+    __tablename__ = "courses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(50), nullable=False, default="")
+    name = Column(String(100), nullable=False, default="")
+    section = Column(String(50), nullable=False, default="A")
+    title = Column(String(120), nullable=True, default="")
+    is_open_credit = Column(Boolean, default=False)
+
+    def __init__(self, code, title, name="", section="A", is_open_credit=False):
+        self.code = code
+        self.title = title
+        self.name = title or name or code or ""
+        self.section = section or "A"
+        self.is_open_credit = is_open_credit
+
+    @classmethod
+    def find_all(cls) -> List["CourseModel"]:
+        return Session.query(cls).all()
+
+    @classmethod
+    def find_by_code(cls, code: str) -> "CourseModel":
+        return Session.query(cls).filter(
+            (cls.code == code) | (cls.name == code)
+        ).first()
+
+    @classmethod
+    def find_by_id(cls, _id: int) -> "CourseModel":
+        return Session.query(cls).filter_by(id=_id).first()
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "code": self.code or self.name or "",
+            "title": self.title or self.name or "",
+            "section": self.section or "A"
+        }
+
+    def save_to_db(self) -> None:
+        try:
+            Session.add(self)
+            Session.commit()
+        except Exception:
+            Session.rollback()
+            raise
+
+    def delete_from_db(self) -> None:
+        try:
+            Session.delete(self)
+            Session.commit()
+        except Exception:
+            Session.rollback()
+            raise
+
+    @classmethod
+    def initialize_default_courses(cls):
+        defaults = [
+            ("CSE-101", "Structured Programming"),
+            ("CSE-102", "Data Structures & Algorithms"),
+            ("CSE-201", "Object Oriented Programming"),
+            ("MAT-101", "Linear Algebra & Differential Equations"),
+            ("EEE-101", "Electrical Circuits & Electronics"),
+            ("ENG-101", "English Communication Skills")
+        ]
+        for code, title in defaults:
+            if not cls.find_by_code(code):
+                course = cls(code=code, title=title, name=title)
+                course.save_to_db()
 
 
 class AttendanceModel(Base):
@@ -238,6 +326,19 @@ class VideoFeedModel(Base):
     def find_all(cls) -> List["VideoFeedModel"]:
         return Session.query(cls).all()
 
+    @classmethod
+    def initialize_default_admin(cls):
+        from werkzeug.security import generate_password_hash
+        admin_email = "admin@green.edu.bd"
+        if not cls.find_by_email(admin_email):
+            admin_user = cls(
+                name="System Administrator",
+                email=admin_email,
+                password=generate_password_hash("admin123", method="pbkdf2:sha256"),
+                role="admin"
+            )
+            admin_user.save_to_db()
+
     def save_to_db(self) -> None:
         Session.add(self)
         Session.commit()
@@ -247,154 +348,81 @@ class VideoFeedModel(Base):
         Session.commit()
 
 
-class CourseModel(Base):
-    __tablename__ = "courses"
+class AbsenceNoticeModel(Base):
+    __tablename__ = "absence_notices"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(String(50), nullable=False, unique=True)
-    name = Column(String(100), nullable=False)
-    section = Column(String(50), nullable=False, default="Section A")
-    is_open_credit = Column(Boolean, default=False)
-
-    enrollments = relationship("EnrollmentModel", backref="course", cascade="all, delete-orphan")
-
-    @classmethod
-    def find_by_code(cls, code: str) -> "CourseModel":
-        return Session.query(cls).filter_by(code=code).first()
-
-    @classmethod
-    def find_by_id(cls, _id: int) -> "CourseModel":
-        return Session.query(cls).filter_by(id=_id).first()
-
-    @classmethod
-    def find_all(cls) -> List["CourseModel"]:
-        return Session.query(cls).all()
+    student_id = Column(Integer, nullable=False)
+    student_name = Column(String(100), nullable=False)
+    course = Column(String(50), nullable=False)
+    date = Column(String(20), nullable=False)
+    reason = Column(String(500), nullable=False)
+    status = Column(String(30), default="Submitted")
+    created_at = Column(DateTime(timezone=True), default=dtime.now)
 
     def to_dict(self):
         return {
             "id": self.id,
-            "code": self.code,
-            "name": self.name,
-            "section": self.section,
-            "is_open_credit": self.is_open_credit
+            "student_id": self.student_id,
+            "student_name": self.student_name,
+            "course": self.course,
+            "date": self.date,
+            "reason": self.reason,
+            "status": self.status,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else ""
         }
 
     def save_to_db(self) -> None:
         Session.add(self)
         Session.commit()
 
-    def delete_from_db(self) -> None:
-        Session.delete(self)
-        Session.commit()
-
-
-class EnrollmentModel(Base):
-    __tablename__ = "enrollments"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-
-    student_rel = relationship("StudentModel", backref=backref("enrollments", cascade="all, delete-orphan"))
+    @classmethod
+    def find_by_student_id(cls, student_id: int):
+        return Session.query(cls).filter_by(student_id=student_id).order_by(cls.id.desc()).all()
 
     @classmethod
-    def find_by_student(cls, student_id: int) -> List["EnrollmentModel"]:
-        return Session.query(cls).filter_by(student_id=student_id).all()
-
-    @classmethod
-    def find_by_course(cls, course_id: int) -> List["EnrollmentModel"]:
-        return Session.query(cls).filter_by(course_id=course_id).all()
-
-    @classmethod
-    def find_all(cls) -> List["EnrollmentModel"]:
-        return Session.query(cls).all()
-
-    def save_to_db(self) -> None:
-        Session.add(self)
-        Session.commit()
-
-    def delete_from_db(self) -> None:
-        Session.delete(self)
-        Session.commit()
-
-
-class RoomModel(Base):
-    __tablename__ = "rooms"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    room_number = Column(String(50), nullable=False, unique=True)
-    capacity = Column(Integer, nullable=False, default=50)
-
-    @classmethod
-    def find_by_id(cls, _id: int) -> "RoomModel":
-        return Session.query(cls).filter_by(id=_id).first()
-
-    @classmethod
-    def find_all(cls) -> List["RoomModel"]:
-        return Session.query(cls).all()
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "room_number": self.room_number,
-            "capacity": self.capacity
-        }
-
-    def save_to_db(self) -> None:
-        Session.add(self)
-        Session.commit()
-
-    def delete_from_db(self) -> None:
-        Session.delete(self)
-        Session.commit()
-
-
-class ExamSlotModel(Base):
-    __tablename__ = "exam_slots"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    exam_date = Column(String(50), nullable=False)  # e.g., "Day 1"
-    start_time = Column(String(20), nullable=False) # e.g., "10:00 AM"
-    end_time = Column(String(20), nullable=False)   # e.g., "12:00 PM"
-    slot_name = Column(String(100), nullable=True)
-
-    @classmethod
-    def find_all(cls) -> List["ExamSlotModel"]:
-        return Session.query(cls).all()
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "exam_date": self.exam_date,
-            "start_time": self.start_time,
-            "end_time": self.end_time,
-            "slot_name": self.slot_name or f"{self.exam_date} - {self.start_time}"
-        }
-
-    def save_to_db(self) -> None:
-        Session.add(self)
-        Session.commit()
-
-    def delete_from_db(self) -> None:
-        Session.delete(self)
-        Session.commit()
-
-
-class ExamRoutineModel(Base):
-    __tablename__ = "exam_routines"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    created_at = Column(DateTime, default=dtime.now)
-    routine_json = Column(String, nullable=False)
-
-    @classmethod
-    def find_latest(cls) -> "ExamRoutineModel":
-        return Session.query(cls).order_by(cls.id.desc()).first()
-
-    def save_to_db(self) -> None:
-        Session.add(self)
-        Session.commit()
+    def find_all(cls):
+        return Session.query(cls).order_by(cls.id.desc()).all()
 
 
 Base.metadata.create_all(engine)
-Settings.initialize_default_settings()
+try:
+    with engine.connect() as conn:
+        conn.execute("ALTER TABLE students ADD COLUMN password VARCHAR(255);")
+except Exception:
+    pass
+try:
+    with engine.connect() as conn:
+        conn.execute("ALTER TABLE students ADD COLUMN courses VARCHAR(500) DEFAULT '';")
+except Exception:
+    pass
+try:
+    with engine.connect() as conn:
+        conn.execute("ALTER TABLE teachers ADD COLUMN courses VARCHAR(500) DEFAULT '';")
+except Exception:
+    pass
+try:
+    with engine.connect() as conn:
+        conn.execute("ALTER TABLE courses ADD COLUMN title VARCHAR(120) DEFAULT '';")
+except Exception:
+    pass
+try:
+    with engine.connect() as conn:
+        conn.execute("ALTER TABLE courses ADD COLUMN code VARCHAR(30) DEFAULT '';")
+except Exception:
+    pass
+try:
+    with engine.connect() as conn:
+        conn.execute("ALTER TABLE courses ADD COLUMN name VARCHAR(120) DEFAULT '';")
+except Exception:
+    pass
+
+Settings.initialize_default_settings()
+try:
+    TeacherModel.initialize_default_admin()
+except Exception:
+    pass
+try:
+    CourseModel.initialize_default_courses()
+except Exception:
+    pass

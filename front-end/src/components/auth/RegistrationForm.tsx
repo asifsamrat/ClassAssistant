@@ -7,24 +7,29 @@ import { useNavigate } from 'react-router-dom';
 
 interface RegistrationFormProps {
   onSuccess?: () => void;
+  role?: 'student' | 'faculty';
 }
 
-export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess }) => {
+export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess, role = 'faculty' }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
+    student_id: '',
     email: '',
     password: '',
     agreeToTerms: false
   });
   const [errors, setErrors] = useState({
     name: '',
+    student_id: '',
     email: '',
     password: '',
-    agreeToTerms: ''
+    agreeToTerms: '',
+    general: ''
   });
   const navigate = useNavigate();
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
@@ -36,7 +41,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess })
     if (errors[name as keyof typeof errors]) {
       setErrors(prev => ({
         ...prev,
-        [name]: ''
+        [name]: '',
+        general: ''
       }));
     }
   };
@@ -77,19 +83,28 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess })
 
   const validate = () => {
     let valid = true;
-    const newErrors = { name: '', email: '', password: '', agreeToTerms: '' };
+    const newErrors = { name: '', student_id: '', email: '', password: '', agreeToTerms: '', general: '' };
     
+    if (role === 'student') {
+      if (!formData.student_id.trim()) {
+        newErrors.student_id = 'Student ID is required';
+        valid = false;
+      }
+    }
+
     if (!formData.name.trim()) {
-      newErrors.name = 'Name is required';
+      newErrors.name = 'Full Name is required';
       valid = false;
     }
     
-    if (!formData.email) {
-      newErrors.email = 'Email is required';
-      valid = false;
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email is invalid';
-      valid = false;
+    if (role === 'faculty') {
+      if (!formData.email) {
+        newErrors.email = 'Email is required';
+        valid = false;
+      } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+        newErrors.email = 'Email is invalid';
+        valid = false;
+      }
     }
     
     if (!formData.password) {
@@ -115,38 +130,57 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess })
     if (!validate()) return;
     
     setIsLoading(true);
-    // console.log(formData)
-    // signup handle
+    setErrors(prev => ({ ...prev, general: '' }));
+
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API}/signup`,formData);
+      const endpoint = role === 'student' ? '/student/signup' : '/signup';
+      const payload = role === 'student'
+        ? { student_id: formData.student_id, name: formData.name, password: formData.password, agreeToTerms: formData.agreeToTerms }
+        : { name: formData.name, email: formData.email, password: formData.password, agreeToTerms: formData.agreeToTerms };
+
+      const response = await axios.post(`${import.meta.env.VITE_API}${endpoint}`, payload);
       
-      if(response.data.msg=='success')
-      {
-        alert("account created")
-        // navigate(`/`)
-        window.location.href = '/';
+      if (response.data.msg === 'success') {
+        alert('Account created successfully!');
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          navigate(role === 'student' ? '/student' : '/faculty');
+        }
+      } else {
+        setErrors(prev => ({ ...prev, general: response.data.msg || 'Registration failed' }));
       }
-    } catch (error) {
-      console.log(error)
-    }finally {
+    } catch (error: any) {
+      const msg = error.response?.data?.msg || 'Registration failed. Please try again.';
+      setErrors(prev => ({ ...prev, general: msg }));
+    } finally {
       setIsLoading(false);
     }
-
-    // try {
-    //   await new Promise(resolve => setTimeout(resolve, 1500));
-    //   console.log('Registration form submitted:', formData);
-    //   onSuccess?.();
-    //   // Success handling would go here
-    // } catch (error) {
-    //   console.error('Registration error:', error);
-    //   // Error handling would go here
-    // } finally {
-    //   setIsLoading(false);
-    // }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {errors.general && (
+        <div className="p-3 text-sm text-red-700 bg-red-100 rounded-lg border border-red-200">
+          {errors.general}
+        </div>
+      )}
+
+      {role === 'student' && (
+        <Input
+          label="Student ID"
+          name="student_id"
+          type="text"
+          icon={<User className="w-5 h-5 text-gray-400" />}
+          value={formData.student_id}
+          onChange={handleChange}
+          error={errors.student_id}
+          placeholder="e.g. 101"
+          autoComplete="username"
+          required
+        />
+      )}
+
       <Input
         label="Full Name"
         name="name"
@@ -160,18 +194,20 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSuccess })
         required
       />
       
-      <Input
-        label="Email"
-        name="email"
-        type="email"
-        icon={<Mail className="w-5 h-5 text-gray-400" />}
-        value={formData.email}
-        onChange={handleChange}
-        error={errors.email}
-        placeholder="your.email@example.com"
-        autoComplete="email"
-        required
-      />
+      {role === 'faculty' && (
+        <Input
+          label="Email"
+          name="email"
+          type="email"
+          icon={<Mail className="w-5 h-5 text-gray-400" />}
+          value={formData.email}
+          onChange={handleChange}
+          error={errors.email}
+          placeholder="your.email@example.com"
+          autoComplete="email"
+          required
+        />
+      )}
       
       <div className="space-y-2">
         <Input

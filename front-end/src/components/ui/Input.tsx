@@ -16,30 +16,33 @@ export const Input: React.FC<InputProps> = ({
   ...props
 }) => {
   const [isFocused, setIsFocused] = useState(false);
-  const hasValue = Boolean(props.value);
 
   return (
-    <div className="relative">
-      <div className="relative">
+    <div className="w-full space-y-1">
+      {label && (
+        <label
+          htmlFor={props.id || props.name}
+          className={`block text-xs font-semibold tracking-wide ${
+            error ? 'text-red-600' : isFocused ? 'text-emerald-700' : 'text-gray-700'
+          }`}
+        >
+          {label}
+        </label>
+      )}
+
+      <div className="relative rounded-xl shadow-2xs">
         {icon && (
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none z-10">
             {icon}
           </div>
         )}
-        
+
         <input
+          id={props.id || props.name}
+          readOnly
           {...props}
-          className={`block w-full ${
-            icon ? 'pl-10' : 'pl-4'
-          } ${
-            endIcon ? 'pr-10' : 'pr-4'
-          } py-2.5 border ${
-            error
-              ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
-              : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'
-          } rounded-md shadow-sm text-gray-900 placeholder-transparent ${className}`}
-          placeholder={props.placeholder || ' '}
           onFocus={(e) => {
+            e.target.removeAttribute('readonly');
             setIsFocused(true);
             props.onFocus?.(e);
           }}
@@ -47,37 +50,26 @@ export const Input: React.FC<InputProps> = ({
             setIsFocused(false);
             props.onBlur?.(e);
           }}
-          id={props.name}
+          className={`block w-full text-sm rounded-xl py-2.5 transition-all duration-200 ${
+            icon ? 'pl-11' : 'pl-3.5'
+          } ${
+            endIcon ? 'pr-11' : 'pr-3.5'
+          } bg-white text-gray-900 placeholder-gray-400 border ${
+            error
+              ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-200'
+              : 'border-gray-200 hover:border-gray-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100'
+          } focus:outline-none ${className}`}
         />
-        
+
         {endIcon && (
-          <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+          <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center z-10">
             {endIcon}
           </div>
         )}
-        
-        <label
-          htmlFor={props.name}
-          className={`absolute text-sm duration-200 transform ${
-            (isFocused || hasValue) 
-              ? '-translate-y-2 scale-90 top-0 z-10 ml-3 bg-white px-1 py-0'
-              : 'top-2.5'
-          } ${
-            icon ? 'left-9' : 'left-3'
-          } ${
-            isFocused
-              ? 'text-indigo-600'
-              : error
-              ? 'text-red-500'
-              : 'text-gray-500'
-          } origin-[0] pointer-events-none`}
-        >
-          {label}
-        </label>
       </div>
-      
+
       {error && (
-        <p className="mt-1 text-sm text-red-600">{error}</p>
+        <p className="text-xs text-red-600 font-medium mt-1">{error}</p>
       )}
     </div>
   );
