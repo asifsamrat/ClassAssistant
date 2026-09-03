@@ -1,5 +1,5 @@
-# 🎓 VisioClass AI (ClassAssistant)
-> **An Intelligent Real-Time Face Recognition Attendance & Course Management System**
+# 🎓 ClassAssistant AI
+> **An Intelligent Camera-Based Automated Attendance System**
 
 [![React](https://img.shields.io/badge/Frontend-React%2018%20%7C%20TypeScript-61DAFB?logo=react)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Build%20Tool-Vite-646CFF?logo=vite)](https://vitejs.dev/)
@@ -11,7 +11,7 @@
 
 ## 🌟 System Overview
 
-**VisioClass AI** is an enterprise-grade academic platform designed to automate student attendance verification using deep-learning facial recognition. Replacing slow and proxy-vulnerable manual roll calls, VisioClass AI streams live webcam feeds over WebSockets, extracts 128-dimensional biometric facial encodings in real time, and persists attendance with **strict course code and date-wise isolation**.
+**ClassAssistant AI** is an enterprise-grade academic platform designed to automate student attendance verification using deep-learning facial recognition. Replacing slow and proxy-vulnerable manual roll calls, ClassAssistant AI streams live webcam feeds over WebSockets, extracts 128-dimensional biometric facial encodings in real time, and persists attendance with **strict course code and date-wise isolation**.
 
 The platform provides dedicated role-based portals for **Administrators**, **Faculty Members**, and **Students**, featuring excuse notice approval workflows, exportable attendance matrix reports (PDF & Excel), and an automated conflict-free **Exam Routine Scheduler**.
 
