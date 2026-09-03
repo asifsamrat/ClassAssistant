@@ -33,15 +33,18 @@ export const AdminDashboard: React.FC = () => {
   // Student Form Modal State
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [showStudentPassword, setShowStudentPassword] = useState(false);
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [studentForm, setStudentForm] = useState({ id: '', name: '', password: '', selectedCourses: [] as string[] });
 
   // Faculty Form Modal State
   const [showFacultyModal, setShowFacultyModal] = useState(false);
   const [showFacultyPassword, setShowFacultyPassword] = useState(false);
+  const [editingFacultyId, setEditingFacultyId] = useState<number | null>(null);
   const [facultyForm, setFacultyForm] = useState({ name: '', email: '', password: '', role: 'user', selectedCourses: [] as string[] });
 
   // Course Form Modal State
   const [showCourseModal, setShowCourseModal] = useState(false);
+  const [editingCourseId, setEditingCourseId] = useState<number | null>(null);
   const [courseForm, setCourseForm] = useState({ code: '', title: '' });
 
   const navigate = useNavigate();
@@ -102,6 +105,7 @@ export const AdminDashboard: React.FC = () => {
         `${import.meta.env.VITE_API}/admin/students`,
         {
           id: studentForm.id,
+          original_id: editingStudentId,
           name: studentForm.name,
           password: studentForm.password,
           courses: studentForm.selectedCourses.join(', '),
@@ -109,8 +113,9 @@ export const AdminDashboard: React.FC = () => {
         { withCredentials: true }
       );
       if (res.data.msg === 'success') {
-        toast.success('Student account & courses provisioned successfully!');
+        toast.success(editingStudentId ? 'Student updated successfully!' : 'Student account & courses provisioned successfully!');
         setShowStudentModal(false);
+        setEditingStudentId(null);
         setStudentForm({ id: '', name: '', password: '', selectedCourses: [] });
         fetchAdminData();
       }
@@ -140,6 +145,7 @@ export const AdminDashboard: React.FC = () => {
       const res = await axios.post(
         `${import.meta.env.VITE_API}/admin/faculty`,
         {
+          id: editingFacultyId,
           name: facultyForm.name,
           email: facultyForm.email,
           password: facultyForm.password,
@@ -149,8 +155,9 @@ export const AdminDashboard: React.FC = () => {
         { withCredentials: true }
       );
       if (res.data.msg === 'success') {
-        toast.success('Faculty account & courses provisioned successfully!');
+        toast.success(editingFacultyId ? 'Faculty updated successfully!' : 'Faculty account & courses provisioned successfully!');
         setShowFacultyModal(false);
+        setEditingFacultyId(null);
         setFacultyForm({ name: '', email: '', password: '', role: 'user', selectedCourses: [] });
         fetchAdminData();
       }
@@ -179,17 +186,18 @@ export const AdminDashboard: React.FC = () => {
     try {
       const res = await axios.post(
         `${import.meta.env.VITE_API}/admin/courses`,
-        { code: courseForm.code, title: courseForm.title },
+        { id: editingCourseId, code: courseForm.code, title: courseForm.title },
         { withCredentials: true }
       );
       if (res.data.msg === 'success') {
-        toast.success('Course created successfully!');
+        toast.success(editingCourseId ? 'Course updated successfully!' : 'Course created successfully!');
         setShowCourseModal(false);
+        setEditingCourseId(null);
         setCourseForm({ code: '', title: '' });
         fetchAdminData();
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.msg || 'Failed to create course');
+      toast.error(err.response?.data?.msg || 'Failed to save course');
     }
   };
 
@@ -376,6 +384,7 @@ export const AdminDashboard: React.FC = () => {
             {activeTab === 'students' && (
               <button
                 onClick={() => {
+                  setEditingStudentId(null);
                   setStudentForm({ id: '', name: '', password: '', selectedCourses: [] });
                   setShowStudentPassword(false);
                   setShowStudentModal(true);
@@ -389,6 +398,7 @@ export const AdminDashboard: React.FC = () => {
             {activeTab === 'faculty' && (
               <button
                 onClick={() => {
+                  setEditingFacultyId(null);
                   setFacultyForm({ name: '', email: '', password: '', role: 'user', selectedCourses: [] });
                   setShowFacultyPassword(false);
                   setShowFacultyModal(true);
@@ -402,6 +412,7 @@ export const AdminDashboard: React.FC = () => {
             {activeTab === 'courses' && (
               <button
                 onClick={() => {
+                  setEditingCourseId(null);
                   setCourseForm({ code: '', title: '' });
                   setShowCourseModal(true);
                 }}
@@ -472,6 +483,7 @@ export const AdminDashboard: React.FC = () => {
                           <td className="px-6 py-4 text-right space-x-2">
                             <button
                               onClick={() => {
+                                setEditingStudentId(String(s.id));
                                 setStudentForm({
                                   id: String(s.id),
                                   name: s.name,
@@ -560,6 +572,7 @@ export const AdminDashboard: React.FC = () => {
                           <td className="px-6 py-4 text-right space-x-2">
                             <button
                               onClick={() => {
+                                setEditingFacultyId(f.id);
                                 setFacultyForm({
                                   name: f.name,
                                   email: f.email,
@@ -624,7 +637,17 @@ export const AdminDashboard: React.FC = () => {
                         <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
                           <td className="px-6 py-4 font-mono font-black text-emerald-700">{c.code}</td>
                           <td className="px-6 py-4 font-semibold text-slate-800">{c.title}</td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-6 py-4 text-right space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingCourseId(c.id);
+                                setCourseForm({ code: c.code, title: c.title });
+                                setShowCourseModal(true);
+                              }}
+                              className="px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors border border-emerald-200"
+                            >
+                              Edit
+                            </button>
                             <button
                               onClick={() => handleDeleteCourse(c.id)}
                               className="px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors border border-red-200"
@@ -647,7 +670,9 @@ export const AdminDashboard: React.FC = () => {
       {showStudentModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
-            <h3 className="text-lg font-extrabold text-slate-900">Provision Student & Assign Courses</h3>
+            <h3 className="text-lg font-extrabold text-slate-900">
+              {editingStudentId ? 'Edit Student & Assign Courses' : 'Provision Student & Assign Courses'}
+            </h3>
             <form onSubmit={handleSaveStudent} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Student ID (Numeric)</label>
@@ -674,13 +699,13 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Password (Click Eye icon to reveal)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Password (Leave blank to keep existing)</label>
                 <div className="relative">
                   <input
                     type={showStudentPassword ? "text" : "password"}
                     value={studentForm.password}
                     onChange={(e) => setStudentForm({ ...studentForm, password: e.target.value })}
-                    placeholder="Set password for student login"
+                    placeholder={editingStudentId ? "Leave blank to keep existing password" : "Set password for student login"}
                     className="w-full border border-slate-300 rounded-xl pl-3.5 pr-10 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
                   />
                   <button
@@ -717,7 +742,10 @@ export const AdminDashboard: React.FC = () => {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowStudentModal(false)}
+                  onClick={() => {
+                    setShowStudentModal(false);
+                    setEditingStudentId(null);
+                  }}
                   className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50"
                 >
                   Cancel
@@ -726,7 +754,7 @@ export const AdminDashboard: React.FC = () => {
                   type="submit"
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm"
                 >
-                  Save & Provision
+                  {editingStudentId ? 'Update Student' : 'Save & Provision'}
                 </button>
               </div>
             </form>
@@ -738,7 +766,9 @@ export const AdminDashboard: React.FC = () => {
       {showFacultyModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
-            <h3 className="text-lg font-extrabold text-slate-900">Provision Faculty / Teacher & Assign Courses</h3>
+            <h3 className="text-lg font-extrabold text-slate-900">
+              {editingFacultyId ? 'Edit Faculty Member & Courses' : 'Provision Faculty / Teacher & Assign Courses'}
+            </h3>
             <form onSubmit={handleSaveFaculty} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Faculty Name</label>
@@ -765,13 +795,13 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Password (Click Eye icon to reveal)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Password (Leave blank to keep existing)</label>
                 <div className="relative">
                   <input
                     type={showFacultyPassword ? "text" : "password"}
                     value={facultyForm.password}
                     onChange={(e) => setFacultyForm({ ...facultyForm, password: e.target.value })}
-                    placeholder="Set password for faculty login"
+                    placeholder={editingFacultyId ? "Leave blank to keep existing password" : "Set password for faculty login"}
                     className="w-full border border-slate-300 rounded-xl pl-3.5 pr-10 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
                   />
                   <button
@@ -820,7 +850,10 @@ export const AdminDashboard: React.FC = () => {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowFacultyModal(false)}
+                  onClick={() => {
+                    setShowFacultyModal(false);
+                    setEditingFacultyId(null);
+                  }}
                   className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50"
                 >
                   Cancel
@@ -829,7 +862,7 @@ export const AdminDashboard: React.FC = () => {
                   type="submit"
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm"
                 >
-                  Save & Provision
+                  {editingFacultyId ? 'Update Faculty' : 'Save & Provision'}
                 </button>
               </div>
             </form>
@@ -841,7 +874,9 @@ export const AdminDashboard: React.FC = () => {
       {showCourseModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200">
-            <h3 className="text-lg font-extrabold text-slate-900">Add New Course Code</h3>
+            <h3 className="text-lg font-extrabold text-slate-900">
+              {editingCourseId ? 'Edit Course Details' : 'Add New Course Code'}
+            </h3>
             <form onSubmit={handleSaveCourse} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Course Code</label>
@@ -870,7 +905,10 @@ export const AdminDashboard: React.FC = () => {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowCourseModal(false)}
+                  onClick={() => {
+                    setShowCourseModal(false);
+                    setEditingCourseId(null);
+                  }}
                   className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50"
                 >
                   Cancel
@@ -879,7 +917,7 @@ export const AdminDashboard: React.FC = () => {
                   type="submit"
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm"
                 >
-                  Create Course
+                  {editingCourseId ? 'Update Course' : 'Create Course'}
                 </button>
               </div>
             </form>

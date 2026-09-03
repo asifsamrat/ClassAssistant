@@ -8,12 +8,20 @@ import cv2
 # pyrefly: ignore [missing-import]
 import face_recognition
 
-from src.models import StudentModel, AttendanceModel
-from src.settings import (
-    DATASET_PATH,
-    HAAR_CASCADE_PATH,
-    DLIB_MODEL, DLIB_TOLERANCE, ENCODINGS_FILE
-)
+try:
+    from src.models import StudentModel, AttendanceModel
+    from src.settings import (
+        DATASET_PATH,
+        HAAR_CASCADE_PATH,
+        DLIB_MODEL, DLIB_TOLERANCE, ENCODINGS_FILE
+    )
+except ModuleNotFoundError:
+    from models import StudentModel, AttendanceModel
+    from settings import (
+        DATASET_PATH,
+        HAAR_CASCADE_PATH,
+        DLIB_MODEL, DLIB_TOLERANCE, ENCODINGS_FILE
+    )
 
 
 class CliAppUtils:

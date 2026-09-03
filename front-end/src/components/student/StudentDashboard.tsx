@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 const socket = io(import.meta.env.VITE_API, {
-  transports: ['websocket'],
+  transports: ['polling', 'websocket'],
   withCredentials: true,
 });
 
@@ -501,6 +501,7 @@ export const StudentDashboard: React.FC = () => {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 text-slate-500 text-xs font-bold tracking-wider border-b border-slate-200">
+                      <th className="px-6 py-4">Course</th>
                       <th className="px-6 py-4">Date</th>
                       <th className="px-6 py-4">Check-In Time</th>
                       <th className="px-6 py-4">Duration Stayed</th>
@@ -510,13 +511,14 @@ export const StudentDashboard: React.FC = () => {
                   <tbody className="divide-y divide-slate-100 text-sm">
                     {attendanceLogs.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                        <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                           No recent attendance records found.
                         </td>
                       </tr>
                     ) : (
                       attendanceLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-6 py-4 font-mono font-bold text-emerald-700">{log.course || "--"}</td>
                           <td className="px-6 py-4 font-mono font-bold text-slate-900">{log.date}</td>
                           <td className="px-6 py-4 text-slate-600 font-medium">{log.check_in}</td>
                           <td className="px-6 py-4 text-slate-600 font-mono text-xs">{log.total_minutes} minutes</td>

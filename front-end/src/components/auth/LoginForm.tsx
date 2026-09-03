@@ -79,7 +79,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ role = 'faculty' }) => {
           } else if (userRole === 'student') {
             navigate('/student/dashboard');
           } else {
-            navigate('/attendance-system/dashboard');
+            navigate('/faculty/dashboard');
           }
         }
       } catch (error) {
@@ -119,7 +119,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ role = 'faculty' }) => {
         } else if (userRole === 'student') {
           navigate('/student/dashboard');
         } else {
-          navigate('/attendance-system/dashboard');
+          navigate('/faculty/dashboard');
         }
       } else {
         setErrors(prev => ({ ...prev, general: response.data.msg || 'Login failed' }));
@@ -155,7 +155,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ role = 'faculty' }) => {
         />
       ) : (
         <Input
-          label={role === 'admin' ? "Admin Email / Username" : "GUB Institutional Email"}
+          label={role === 'admin' ? "Admin Email" : "GUB Institutional Email"}
           name="email"
           type={role === 'admin' ? "text" : "email"}
           icon={<Mail className="w-5 h-5 text-emerald-600" />}

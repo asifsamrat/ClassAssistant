@@ -1,8 +1,10 @@
 import os
 import re
 from typing import Union
+# pyrefly: ignore [missing-import]
 from werkzeug.datastructures import FileStorage
 
+# pyrefly: ignore [missing-import]
 from flask_uploads import UploadSet, IMAGES
 
 IMAGE_SET = UploadSet("images", IMAGES)  # set name and allowed extensions
@@ -52,7 +54,7 @@ def is_filename_safe(file: Union[str, FileStorage]) -> bool:
 
     allowed_format = "|".join(IMAGES)
     # format IMAGES into regex, eg: ('jpeg','png') --> 'jpeg|png'
-    regex = f"^[a-zA-Z0-9][a-zA-Z0-9_()-\.]*\.({allowed_format})$"
+    regex = rf"^[a-zA-Z0-9][a-zA-Z0-9_()-\.]*\.({allowed_format})$"
     return re.match(regex, filename) is not None
 
 

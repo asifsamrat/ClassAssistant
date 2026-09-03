@@ -1,10 +1,15 @@
 import os
 import pickle
 
+# pyrefly: ignore [missing-import]
 import cv2
+# pyrefly: ignore [missing-import]
 import face_recognition
 
-from src.settings import DATASET_PATH, ENCODINGS_FILE, DLIB_MODEL
+try:
+    from src.settings import DATASET_PATH, ENCODINGS_FILE, DLIB_MODEL
+except ModuleNotFoundError:
+    from settings import DATASET_PATH, ENCODINGS_FILE, DLIB_MODEL
 
 
 class TrainClassifier:

@@ -2,13 +2,20 @@ from typing import List
 from uuid import uuid4
 from datetime import date as dt, datetime as dtime, time
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy import Column,Float,Integer, String, Boolean, DateTime, TIMESTAMP, ForeignKey, Time
+# pyrefly: ignore [missing-import]
 from sqlalchemy.ext.declarative import declarative_base
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import relationship, backref
+# pyrefly: ignore [missing-import]
 from sqlalchemy.sql import func
 
 
-from src.db import Session, engine
+try:
+    from src.db import Session, engine
+except ModuleNotFoundError:
+    from db import Session, engine
 
 
 Base = declarative_base()
@@ -180,6 +187,8 @@ class AttendanceModel(Base):
 
     date = Column(DateTime(timezone=True), default=dtime.now)  # full datetime of first detection
     student_id = Column(Integer, ForeignKey("students.id"))
+    course_code = Column(String(50), default="")  # Associated course code (e.g. "CSE-101")
+    session_id = Column(String(100), default="")   # Unique session identifier
 
     # New fields
     entry_time = Column(DateTime(timezone=True), default=dtime.now)   # first time detected today
@@ -190,11 +199,16 @@ class AttendanceModel(Base):
 
     # ---------------------- CLASS METHODS ----------------------
     @classmethod
-    def find_by_student_and_date(cls, student_id: int, target_date: date):
-        return Session.query(cls).filter(
+    def find_by_student_and_date(cls, student_id: int, target_date: date, course_code: str = None, session_id: str = None):
+        query = Session.query(cls).filter(
             cls.student_id == student_id,
             func.date(cls.date) == target_date
-        ).first()
+        )
+        if course_code:
+            query = query.filter(cls.course_code == course_code)
+        if session_id:
+            query = query.filter(cls.session_id == session_id)
+        return query.first()
     
     @classmethod
     def exists_by_id(cls, _id: int) -> bool:
@@ -217,8 +231,10 @@ class AttendanceModel(Base):
         return Session.query(cls).all()
 
     @classmethod
-    def is_marked(cls, date: dt, student: StudentModel) -> bool:
-        date_only = date.date()
+    def is_marked(cls, date_val, student: StudentModel) -> bool:
+        if not student:
+            return False
+        date_only = date_val.date() if hasattr(date_val, "date") and callable(getattr(date_val, "date")) else date_val
         marked = Session.query(cls).filter(
             func.date(cls.date) == date_only,
             cls.student_id == student.id
@@ -328,6 +344,7 @@ class VideoFeedModel(Base):
 
     @classmethod
     def initialize_default_admin(cls):
+        # pyrefly: ignore [missing-import]
         from werkzeug.security import generate_password_hash
         admin_email = "admin@green.edu.bd"
         if not cls.find_by_email(admin_email):
@@ -377,12 +394,20 @@ class AbsenceNoticeModel(Base):
         Session.commit()
 
     @classmethod
+    def find_by_id(cls, notice_id: int):
+        return Session.query(cls).filter_by(id=notice_id).first()
+
+    @classmethod
     def find_by_student_id(cls, student_id: int):
         return Session.query(cls).filter_by(student_id=student_id).order_by(cls.id.desc()).all()
 
     @classmethod
     def find_all(cls):
         return Session.query(cls).order_by(cls.id.desc()).all()
+
+    def delete_from_db(self) -> None:
+        Session.delete(self)
+        Session.commit()
 
 
 Base.metadata.create_all(engine)
@@ -417,6 +442,18 @@ try:
 except Exception:
     pass
 
+try:
+    with engine.connect() as conn:
+        conn.execute("ALTER TABLE attendances ADD COLUMN course_code VARCHAR(50) DEFAULT '';")
+except Exception:
+    pass
+
+try:
+    with engine.connect() as conn:
+        conn.execute("ALTER TABLE attendances ADD COLUMN session_id VARCHAR(100) DEFAULT '';")
+except Exception:
+    pass
+
 Settings.initialize_default_settings()
 try:
     TeacherModel.initialize_default_admin()
@@ -425,4 +462,4 @@ except Exception:
 try:
     CourseModel.initialize_default_courses()
 except Exception:
-    pass
+    pass

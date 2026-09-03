@@ -30,7 +30,13 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", 5000))
 app = Flask(__name__)
 CORS(app,supports_credentials=True,methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],)
 
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    ping_timeout=60,
+    ping_interval=25
+)
 
 # ====== Load Known Encodings from Pickle File ======
 try:
@@ -51,12 +57,44 @@ if GLOBAL_FACE_CLASSIFIER.empty():
 
 STUDENT_CACHE = {}
 LAST_DB_UPDATE_TIME = {}
+ACTIVE_SESSION_DATA = {}
+
+
+@socketio.on('set_active_course')
+def handle_set_active_course(data):
+    try:
+        sid = getattr(request, 'sid', 'default')
+        if isinstance(data, dict):
+            c_code = data.get('course_code') or data.get('code') or ''
+            s_id = data.get('session_id') or ''
+            s_date = data.get('selected_date') or data.get('date') or ''
+        else:
+            c_code = str(data or '')
+            s_id = ''
+            s_date = ''
+        ACTIVE_SESSION_DATA[sid] = {
+            "course_code": c_code.strip().upper(),
+            "session_id": s_id.strip(),
+            "selected_date": s_date.strip()
+        }
+    except Exception as e:
+        print("[ERROR in handle_set_active_course]", e)
+
 
 # ====== Helper: Fast Face Recognition & Attendance ======
-def recognize_faces_and_mark_attendance(encodings):
+def recognize_faces_and_mark_attendance(encodings, course_code="", session_id="", selected_date_str=""):
     names = []
     now_dt = ds.datetime.now()
     now_ts = now_dt.timestamp()
+
+    # Parse target date string from frontend datepicker or fallback to today
+    try:
+        if selected_date_str:
+            target_date_obj = ds.datetime.strptime(selected_date_str, "%Y-%m-%d").date()
+        else:
+            target_date_obj = ds.date.today()
+    except Exception:
+        target_date_obj = ds.date.today()
 
     for encoding in encodings:
         matches = face_recognition.compare_faces(known_encodings, encoding, DLIB_TOLERANCE)
@@ -82,24 +120,32 @@ def recognize_faces_and_mark_attendance(encodings):
 
                 display_name = student_name
 
-                # Throttle DB writes (only update SQLite database once every 10 seconds per student)
-                last_update = LAST_DB_UPDATE_TIME.get(_id, 0)
+                # Throttle DB writes (only update SQLite database once every 10 seconds per student + course + date + session)
+                cache_key = f"{_id}_{course_code}_{target_date_obj}_{session_id}"
+                last_update = LAST_DB_UPDATE_TIME.get(cache_key, 0)
                 if now_ts - last_update > 10:
-                    LAST_DB_UPDATE_TIME[_id] = now_ts
+                    LAST_DB_UPDATE_TIME[cache_key] = now_ts
                     try:
                         student_obj = StudentModel.find_by_id(_id)
                         if student_obj:
-                            today = ds.date.today()
-                            attendance = AttendanceModel.find_by_student_and_date(_id, today)
+                            attendance = AttendanceModel.find_by_student_and_date(_id, target_date_obj, course_code, session_id)
                             if attendance:
                                 attendance.last_seen_time = now_dt
                                 time_spent = (attendance.last_seen_time - attendance.entry_time).total_seconds() / 60
                                 attendance.total_minutes = int(time_spent)
                                 attendance.is_present = True
+                                if course_code and not attendance.course_code:
+                                    attendance.course_code = course_code
+                                if session_id and not attendance.session_id:
+                                    attendance.session_id = session_id
                                 attendance.save_to_db()
                             else:
+                                att_datetime = ds.datetime.combine(target_date_obj, now_dt.time())
                                 new_att = AttendanceModel(
                                     student=student_obj,
+                                    course_code=course_code or "",
+                                    session_id=session_id or "",
+                                    date=att_datetime,
                                     entry_time=now_dt,
                                     last_seen_time=now_dt,
                                     total_minutes=0,
@@ -140,8 +186,15 @@ def handle_client_frame(data):
             boxes_small = face_recognition.face_locations(rgb_small, model="hog")
 
         if len(boxes_small) > 0:
+            sid = getattr(request, 'sid', 'default')
+            sess_info = ACTIVE_SESSION_DATA.get(sid, {})
+            active_course = sess_info.get("course_code", "")
+            active_session = sess_info.get("session_id", "")
+            active_date = sess_info.get("selected_date", "")
             encodings = face_recognition.face_encodings(rgb_small, boxes_small)
-            names = recognize_faces_and_mark_attendance(encodings)
+            names = recognize_faces_and_mark_attendance(
+                encodings, course_code=active_course, session_id=active_session, selected_date_str=active_date
+            )
 
             # Scale bounding boxes back up to full frame size (2x)
             for ((top, right, bottom, left), name) in zip(boxes_small, names):
@@ -169,6 +222,9 @@ secret_key = app.config.get("JWT_SECRET_KEY", "sss")
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            return make_response('', 200)
+
         token = request.cookies.get(cookie_name)
         if not token:
             return jsonify({"msg": "Unauthorized"}), 401
@@ -221,6 +277,7 @@ def get_attendance():
 
                 date_time["dates"].append({
                     "attendance_date": att_date_str,
+                    "course_code": getattr(attendance, 'course_code', '') or "",
                     "ck_time": ck_time_str,
                     "ck_out": ck_out_str,
                     "total_time": getattr(attendance, 'total_minutes', 0),
@@ -230,6 +287,7 @@ def get_attendance():
         student_data = {
             "id": student.id,
             "name": student.name,
+            "courses": student.courses or "",
             "date_time": date_time,
             "status": latest_status
         }
@@ -943,6 +1001,7 @@ def admin_students():
     if request.method == 'POST':
         data = request.get_json() or {}
         student_id_raw = data.get("id") or data.get("student_id")
+        original_id_raw = data.get("original_id")
         name = (data.get("name") or "").strip()
         password = (data.get("password") or "").strip()
         courses = data.get("courses") or ""
@@ -958,9 +1017,24 @@ def admin_students():
         except (ValueError, TypeError):
             return jsonify({"msg": "Student ID must be a valid integer"}), 400
 
-        student = StudentModel.find_by_id(student_id)
+        original_id = None
+        if original_id_raw:
+            try:
+                original_id = int(original_id_raw)
+            except (ValueError, TypeError):
+                original_id = None
+
+        student = None
+        if original_id:
+            student = StudentModel.find_by_id(original_id)
+
+        if not student:
+            student = StudentModel.find_by_id(student_id)
+
         if not student:
             student = StudentModel(id=student_id, name=name)
+        else:
+            student.id = student_id
 
         student.name = name
         student.courses = courses
@@ -1008,6 +1082,7 @@ def admin_faculty():
 
     if request.method == 'POST':
         data = request.get_json() or {}
+        faculty_id = data.get("id")
         name = (data.get("name") or "").strip()
         email = (data.get("email") or "").strip().lower()
         password = (data.get("password") or "").strip()
@@ -1020,7 +1095,16 @@ def admin_faculty():
         if not name or not email:
             return jsonify({"msg": "Name and Email are required"}), 400
 
-        teacher = TeacherModel.find_by_email(email)
+        teacher = None
+        if faculty_id:
+            try:
+                teacher = TeacherModel.find_by_id(int(faculty_id))
+            except (ValueError, TypeError):
+                teacher = None
+
+        if not teacher:
+            teacher = TeacherModel.find_by_email(email)
+
         if not teacher:
             if not password:
                 return jsonify({"msg": "Password is required for new faculty account"}), 400
@@ -1033,6 +1117,7 @@ def admin_faculty():
             )
         else:
             teacher.name = name
+            teacher.email = email
             teacher.role = role
             teacher.courses = courses
             if password:
@@ -1078,6 +1163,7 @@ def admin_courses():
 
     if request.method == 'POST':
         data = request.get_json() or {}
+        course_id = data.get("id")
         code = (data.get("code") or "").strip().upper()
         title = (data.get("title") or "").strip()
 
@@ -1086,8 +1172,18 @@ def admin_courses():
 
         try:
             from src.db import Session
-            existing = CourseModel.find_by_code(code)
+            existing = None
+            if course_id:
+                try:
+                    existing = CourseModel.find_by_id(int(course_id))
+                except (ValueError, TypeError):
+                    existing = None
+
+            if not existing:
+                existing = CourseModel.find_by_code(code)
+
             if existing:
+                existing.code = code
                 existing.title = title
                 existing.name = title
                 existing.save_to_db()
@@ -1152,17 +1248,58 @@ def student_portal_data():
     student_attendances = [a for a in all_attendances if a.student_id == student.id]
 
     course_stats = []
-    for idx, c_code in enumerate(assigned_courses):
-        c_model = CourseModel.find_by_code(c_code)
-        c_title = c_model.title if c_model else f"Course {c_code}"
 
-        # Course stats logic
-        total_classes = 15 + (idx * 2)
-        attended = len([a for a in student_attendances if getattr(a, 'is_present', 0) > 0])
-        # If demo, simulate realistic course stats
-        attended_count = max(12 - idx, attended)
-        absent_count = max(0, total_classes - attended_count)
-        percentage = round((attended_count / total_classes * 100), 1) if total_classes > 0 else 100.0
+    for c_code in assigned_courses:
+        c_model = CourseModel.find_by_code(c_code)
+        c_title = c_model.title if (c_model and c_model.title) else (c_model.name if (c_model and c_model.name) else c_code)
+
+        c_code_clean = c_code.strip().upper()
+        c_title_clean = c_title.strip().upper()
+
+        # 1. Total class sessions held for THIS specific course across all dates & sessions
+        course_all_atts = []
+        for a in all_attendances:
+            a_c = (getattr(a, 'course_code', '') or "").strip().upper()
+            if a_c and (a_c == c_code_clean or a_c == c_title_clean or (c_code_clean and a_c in c_code_clean) or (c_code_clean and c_code_clean in a_c)):
+                course_all_atts.append(a)
+
+        # Distinct calendar dates for this course
+        course_dates = set()
+        for a in course_all_atts:
+            if getattr(a, 'date', None):
+                d_str = a.date.strftime("%Y-%m-%d") if hasattr(a.date, 'strftime') else str(a.date)[:10]
+                course_dates.add(d_str)
+
+        # Max sessions per student for this course (in case multiple sessions on same date)
+        student_session_counts = {}
+        for a in course_all_atts:
+            student_session_counts[a.student_id] = student_session_counts.get(a.student_id, 0) + 1
+
+        max_student_sessions = max(student_session_counts.values()) if student_session_counts else 0
+
+        # Total held classes = max between distinct calendar dates and max sessions recorded
+        total_classes = max(len(course_dates), max_student_sessions)
+
+        # 2. Total class sessions this student was marked Present for THIS course
+        student_course_atts = []
+        for a in student_attendances:
+            if not (getattr(a, 'is_present', False) == 1.0 or getattr(a, 'is_present', False) == True):
+                continue
+            a_c = (getattr(a, 'course_code', '') or "").strip().upper()
+            if a_c and (a_c == c_code_clean or a_c == c_title_clean or (c_code_clean and a_c in c_code_clean) or (c_code_clean and c_code_clean in a_c)):
+                student_course_atts.append(a)
+
+        attended_count = len(student_course_atts)
+
+        if total_classes > 0:
+            attended_count = min(attended_count, total_classes)
+            absent_count = max(0, total_classes - attended_count)
+            percentage = round((attended_count / total_classes * 100), 1)
+        else:
+            total_classes = 0
+            attended_count = 0
+            absent_count = 0
+            percentage = 100.0
 
         if percentage >= 80:
             status = "Good Standing"
@@ -1183,12 +1320,15 @@ def student_portal_data():
 
     attendance_logs = []
     for a in student_attendances:
-        status_str = "Present" if a.is_present == 1 else ("Late" if a.is_present == 0.5 else "Absent")
+        status_str = "Present" if (a.is_present == 1.0 or a.is_present == True) else "Absent"
+        c_code_att = getattr(a, 'course_code', '') or ""
         attendance_logs.append({
             "id": a.id,
-            "date": a.date.strftime("%Y-%m-%d") if a.date else "--",
-            "check_in": a.date.strftime("%H:%M %p") if a.date else "--",
-            "total_minutes": a.total_minutes or 0,
+            "course": c_code_att,
+            "date": a.date.strftime("%Y-%m-%d") if getattr(a, 'date', None) and hasattr(a.date, 'strftime') else "--",
+            "check_in": a.entry_time.strftime("%I:%M %p") if getattr(a, 'entry_time', None) and hasattr(a.entry_time, 'strftime') else (a.date.strftime("%I:%M %p") if getattr(a, 'date', None) and hasattr(a.date, 'strftime') else "--"),
+            "check_out": a.last_seen_time.strftime("%I:%M %p") if getattr(a, 'last_seen_time', None) and hasattr(a.last_seen_time, 'strftime') else "--",
+            "total_minutes": getattr(a, 'total_minutes', 0) or 0,
             "status": status_str
         })
 
@@ -1232,15 +1372,25 @@ def submit_absence_notice():
         return jsonify({"msg": "Course, Date, and Reason are required"}), 400
 
     student_id = getattr(request, 'student_id', None)
-    student_name = getattr(request, 'user', None) or "Student"
+    student_name = getattr(request, 'user', None)
 
-    if not student_id:
+    student = None
+    if student_id:
+        student = StudentModel.find_by_id(student_id)
+    if not student and student_name:
+        student = StudentModel.find_by_name(student_name)
+
+    if student:
+        student_id = student.id
+        student_name = student.name
+    else:
         students = StudentModel.find_all()
         if students:
             student_id = students[0].id
             student_name = students[0].name
         else:
-            student_id = 101
+            student_id = 1
+            student_name = "Student"
 
     notice = AbsenceNoticeModel(
         student_id=student_id,
@@ -1260,11 +1410,70 @@ def submit_absence_notice():
 def faculty_absence_notices():
     if request.method == 'OPTIONS':
         return make_response('', 200)
-    notices = AbsenceNoticeModel.find_all()
-    return jsonify([n.to_dict() for n in notices]), 200
+
+    all_notices = AbsenceNoticeModel.find_all()
+    return jsonify([n.to_dict() for n in all_notices]), 200
+
+
+@app.route('/faculty/absence_notices/<notice_id>', methods=['PUT', 'OPTIONS'])
+@app.route('/faculty/absence_notices/<int:notice_id>', methods=['PUT', 'OPTIONS'])
+@token_required
+def update_absence_notice_status(notice_id):
+    if request.method == 'OPTIONS':
+        return make_response('', 200)
+
+    try:
+        notice_id_int = int(notice_id)
+    except (ValueError, TypeError):
+        notice_id_int = notice_id
+
+    data = request.get_json() or {}
+    new_status = (data.get("status") or "").strip()
+
+    if not new_status:
+        return jsonify({"msg": "Status is required"}), 400
+
+    notice = AbsenceNoticeModel.find_by_id(notice_id_int)
+    if not notice:
+        return jsonify({"msg": "Absence notice not found"}), 404
+
+    notice.status = new_status
+    notice.save_to_db()
+
+    try:
+        from datetime import datetime as dt_parse
+        notice_date_obj = dt_parse.strptime(notice.date, "%Y-%m-%d").date()
+    except Exception:
+        notice_date_obj = ds.date.today()
+
+    notice_course = (notice.course or "").strip().upper()
+    existing_att = AttendanceModel.find_by_student_and_date(notice.student_id, notice_date_obj, notice_course)
+
+    if new_status == "Approved":
+        if not existing_att:
+            now_dt = ds.datetime.now()
+            existing_att = AttendanceModel(
+                student_id=notice.student_id,
+                course_code=notice_course,
+                entry_time=now_dt,
+                last_seen_time=now_dt,
+                total_minutes=60,
+                is_present=1.0
+            )
+        else:
+            existing_att.is_present = 1.0
+            if notice_course and not existing_att.course_code:
+                existing_att.course_code = notice_course
+        existing_att.save_to_db()
+    elif new_status == "Rejected":
+        if existing_att:
+            existing_att.is_present = 0.0
+            existing_att.save_to_db()
+
+    return jsonify({"msg": "success", "notice": notice.to_dict()}), 200
 
 
 # ====== Start Server ======
 if __name__ == '__main__':
     print("[INFO] Starting Flask-SocketIO server...")
-    socketio.run(app, host='0.0.0.0', port=SERVER_PORT)
+    socketio.run(app, host='0.0.0.0', port=SERVER_PORT, allow_unsafe_werkzeug=True)
