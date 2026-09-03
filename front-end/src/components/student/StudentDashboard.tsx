@@ -504,14 +504,13 @@ export const StudentDashboard: React.FC = () => {
                       <th className="px-6 py-4">Course</th>
                       <th className="px-6 py-4">Date</th>
                       <th className="px-6 py-4">Check-In Time</th>
-                      <th className="px-6 py-4">Duration Stayed</th>
                       <th className="px-6 py-4 text-right">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm">
                     {attendanceLogs.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                        <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
                           No recent attendance records found.
                         </td>
                       </tr>
@@ -521,7 +520,6 @@ export const StudentDashboard: React.FC = () => {
                           <td className="px-6 py-4 font-mono font-bold text-emerald-700">{log.course || "--"}</td>
                           <td className="px-6 py-4 font-mono font-bold text-slate-900">{log.date}</td>
                           <td className="px-6 py-4 text-slate-600 font-medium">{log.check_in}</td>
-                          <td className="px-6 py-4 text-slate-600 font-mono text-xs">{log.total_minutes} minutes</td>
                           <td className="px-6 py-4 text-right">
                             <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${log.status === 'Present'
                               ? 'bg-emerald-100 text-emerald-800'

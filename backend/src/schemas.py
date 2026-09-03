@@ -1,8 +1,12 @@
 from typing import Union, Any, Optional, Mapping
+# pyrefly: ignore [missing-import]
 from werkzeug.datastructures import FileStorage
 
+# pyrefly: ignore [missing-import]
 from marshmallow import Schema, fields
+# pyrefly: ignore [missing-import]
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
+# pyrefly: ignore [missing-import]
 from marshmallow_sqlalchemy.fields import Nested
 
 from src.models import TeacherModel, StudentModel, AttendanceModel, VideoFeedModel

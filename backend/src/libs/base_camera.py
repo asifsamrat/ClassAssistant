@@ -8,6 +8,7 @@ try:
     from greenlet import getcurrent as get_ident
 except ImportError:
     try:
+        # pyrefly: ignore [missing-import]
         from thread import get_ident
     except ImportError:
         from _thread import get_ident
